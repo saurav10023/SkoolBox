@@ -5,6 +5,9 @@ import API from "../api/axios";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { auth } from "../firebase";
 
+// Same logo asset used across Navbar / Footer / Login / Invoice
+import logo from "../assets/logo.png";
+
 // ✅ Replace with your actual WhatsApp support number (with country code, no + or spaces)
 const SUPPORT_WHATSAPP = "9608881888";
 
@@ -189,16 +192,30 @@ export default function ForgotPassword() {
 
       {/* Left Panel */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-blue-600">
-        <div className="relative z-10 flex flex-col justify-between p-12 text-white">
+        {/* Decorative background flourishes */}
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -left-16 w-80 h-80 bg-blue-400/20 rounded-full blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
+          {/* Left panel logo */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center text-lg leading-none">
-              🏫
+            <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center overflow-hidden shrink-0 shadow-md shadow-black/10">
+              <img src={logo} alt="Skool Box logo" className="w-full h-full object-contain p-1" />
             </div>
             <div className="flex flex-col leading-none">
-              <span className="font-black text-white text-base tracking-tight">The Little Kingdom</span>
+              <span className="font-black text-white text-base tracking-tight">Skool Box</span>
               <span className="font-light text-blue-200 text-xs tracking-widest uppercase">Store</span>
             </div>
           </div>
+
           <div className="space-y-4">
             <h1 className="text-4xl font-black leading-tight">
               Forgot your<br />
@@ -223,7 +240,7 @@ export default function ForgotPassword() {
               </button>
             </div>
           </div>
-          <p className="text-blue-200 text-sm">© {new Date().getFullYear()} The Little Kingdom. All rights reserved.</p>
+          <p className="text-blue-200 text-sm">© {new Date().getFullYear()} Skool Box Store. All rights reserved.</p>
         </div>
       </div>
 
@@ -233,11 +250,11 @@ export default function ForgotPassword() {
 
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-base leading-none">
-              🏫
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+              <img src={logo} alt="Skool Box logo" className="w-full h-full object-contain p-1 bg-white" />
             </div>
             <div className="flex flex-col leading-none">
-              <span className="font-black text-gray-900 text-base tracking-tight">The Little Kingdom</span>
+              <span className="font-black text-gray-900 text-base tracking-tight">Skool Box</span>
               <span className="font-light text-blue-600 text-xs tracking-widest uppercase">Store</span>
             </div>
           </div>

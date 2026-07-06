@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Phone, Lock, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, Phone, Lock, ArrowRight, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import API from "../api/axios";
+
+// Same logo asset used across Navbar / Footer / Invoice
+import logo from "../assets/logo.png";
 
 export default function Login() {
   const { login, user } = useAuth();
@@ -49,20 +52,32 @@ export default function Login() {
 
       {/* Left — Image Side */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-blue-600">
-        <div className="relative z-10 flex flex-col justify-between p-12 text-white">
-          
-          {/* Left panel logo — replace the logo block */}
+        {/* Decorative background flourishes */}
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -left-16 w-80 h-80 bg-blue-400/20 rounded-full blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
+
+          {/* Left panel logo */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center text-lg leading-none">
-              🏫
+            <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center overflow-hidden shrink-0 shadow-md shadow-black/10">
+              <img src={logo} alt="Skool Box logo" className="w-full h-full object-contain p-1" />
             </div>
             <div className="flex flex-col leading-none">
-              <span className="font-black text-white text-base tracking-tight">The Little Kingdom</span>
+              <span className="font-black text-white text-base tracking-tight">Skool Box</span>
               <span className="font-light text-blue-200 text-xs tracking-widest uppercase">Store</span>
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-5">
             <h1 className="text-4xl font-black leading-tight">
               Everything your child needs,<br />
               <span className="text-blue-200">all in one place.</span>
@@ -70,11 +85,17 @@ export default function Login() {
             <p className="text-blue-100 text-base font-light max-w-xs">
               Uniforms, bags, stationery — sourced and delivered for your school.
             </p>
+
+            {/* Trust strip */}
+            <div className="flex items-center gap-2 pt-2 text-blue-100 text-sm">
+              <ShieldCheck size={16} className="text-blue-200" />
+              Trusted by schools across Gumla district
+            </div>
           </div>
 
           {/* Copyright line */}
           <p className="text-blue-200 text-sm">
-            © {new Date().getFullYear()} The Little Kingdom Store. All rights reserved.
+            © {new Date().getFullYear()} Skool Box Store. All rights reserved.
           </p>
         </div>
       </div>
@@ -84,18 +105,15 @@ export default function Login() {
         <div className="w-full max-w-md space-y-8">
 
           {/* Mobile logo */}
-          {/* Mobile logo — replace the mobile logo block */}
           <div className="lg:hidden flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-base leading-none">
-              🏫
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+              <img src={logo} alt="Skool Box logo" className="w-full h-full object-contain p-1 bg-white" />
             </div>
             <div className="flex flex-col leading-none">
-              <span className="font-black text-gray-900 text-base tracking-tight">The Little Kingdom</span>
+              <span className="font-black text-gray-900 text-base tracking-tight">Skool Box</span>
               <span className="font-light text-blue-600 text-xs tracking-widest uppercase">Store</span>
             </div>
           </div>
-
-
 
           {/* Heading */}
           <div className="space-y-1">
@@ -177,7 +195,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-3 rounded-xl font-semibold text-sm shadow-md shadow-blue-200 transition-all duration-200"
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-3 rounded-xl font-semibold text-sm shadow-md shadow-blue-200 transition-all duration-200 active:scale-[0.99]"
             >
               {loading ? (
                 <>
