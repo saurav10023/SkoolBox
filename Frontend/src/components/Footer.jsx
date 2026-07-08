@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 // Point this at your actual logo file (same one used in the Navbar)
 import logo from "../assets/logo.png";
 
-const WHATSAPP_NUMBER = "919608881888";
+const WHATSAPP_NUMBER = "7004335880";
 const WHATSAPP_DEFAULT_MSG = encodeURIComponent("Hi! I have a question about Skool Box Store.");
 
 const storeHours = [
@@ -94,19 +94,19 @@ const Footer = () => {
 
           {/* Contact */}
           <div className="space-y-2.5">
-            <a href="tel:+919608881888"
+            <a href="tel:+9170043 35880"
               className="flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors group">
               <div className="w-8 h-8 bg-white/5 group-hover:bg-blue-600 border border-white/10 group-hover:border-blue-600 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0">
                 <Phone size={13} />
               </div>
-              +91 96088 81888
+              +91 70043 35880
             </a>
-            <a href="mailto:littlekingdomstore@email.com"
+            <a href="mailto:skoolboxgumla@gmail.com"
               className="flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors group">
               <div className="w-8 h-8 bg-white/5 group-hover:bg-blue-600 border border-white/10 group-hover:border-blue-600 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0">
                 <Mail size={13} />
               </div>
-              thelittlekingdom1@email.com
+              skoolboxgumla@gmail.com
             </a>
             <div className="flex items-center gap-3 text-sm text-gray-500">
               <div className="w-8 h-8 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center shrink-0">

@@ -9,7 +9,7 @@ import { auth } from "../firebase";
 import logo from "../assets/logo.png";
 
 // ✅ Replace with your actual WhatsApp support number (with country code, no + or spaces)
-const SUPPORT_WHATSAPP = "9608881888";
+const SUPPORT_WHATSAPP = "7004335880";
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
