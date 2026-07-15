@@ -5,7 +5,7 @@ const orderSchema = new Schema(
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true
+      default : null 
     },
 
     orderNumber: {
@@ -84,7 +84,26 @@ const orderSchema = new Schema(
     city: {
       type: String,
       required: true
-    }
+    },
+
+    customerName: {
+    type: String,
+    default: null
+    },
+    email: {
+    type: String,
+    default: null
+    },
+
+  pincode: {
+    type: String,
+    default: null
+  },
+
+  createdByAdmin: {
+    type: Boolean,
+    default: false
+  },
   },
   {
     timestamps: true

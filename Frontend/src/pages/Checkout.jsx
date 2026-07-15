@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   MapPin, Phone, Plus, CheckCircle, AlertCircle,
-  ChevronRight, ShoppingBag, Loader2, Tag, X, Banknote, Smartphone, Star
+  ChevronRight, ShoppingBag, Loader2, Tag, X, Banknote, Smartphone, Star, Zap
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
@@ -31,6 +31,37 @@ export default function Checkout() {
   const { user } = useAuth();
   const { cart, total, fetchCart } = useCart();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // ── Buy Now support ──
+  // ProductView's "Buy Now" button navigates here with:
+  // state: { buyNow: true, product: { _id, name, image, size, quantity, price } }
+  const buyNowProduct = location.state?.buyNow ? location.state.product : null;
+  const isBuyNow = !!buyNowProduct;
+
+  // Normalize into a single shape so the rest of the component (summary, total,
+  // order payload) doesn't need to branch on isBuyNow everywhere.
+  const orderItems = isBuyNow
+    ? [{
+        productId: buyNowProduct._id,
+        name: buyNowProduct.name,
+        image: buyNowProduct.image,
+        size: buyNowProduct.size,
+        quantity: buyNowProduct.quantity,
+        price: buyNowProduct.price,
+      }]
+    : (cart?.items || []).map(item => ({
+        productId: item.product?._id,
+        name: item.product?.name || "Product",
+        image: item.product?.images?.[0],
+        size: item.size,
+        quantity: item.quantity,
+        price: item.price,
+      }));
+
+  const orderTotal = isBuyNow
+    ? buyNowProduct.price * buyNowProduct.quantity
+    : total;
 
   const [addresses, setAddresses]             = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
@@ -58,7 +89,8 @@ export default function Checkout() {
 
   useEffect(() => {
     if (!user) { navigate("/login"); return; }
-    if (!cart || cart.items?.length === 0) { navigate("/cart"); return; }
+    // Only bounce to /cart when this ISN'T a Buy Now checkout and the cart is empty.
+    if (!isBuyNow && (!cart || cart.items?.length === 0)) { navigate("/cart"); return; }
     fetchAddresses();
   }, [user]);
 
@@ -138,16 +170,36 @@ export default function Checkout() {
         }
       }
 
-      // Place order
-      const res = await API.post("/api/v1/orders", {
-        ...details,
-        paymentMethod
-      });
+      // Place order.
+      // NOTE: for a Buy Now checkout we explicitly pass `items` + `buyNow: true`
+      // so the backend creates an order for just this product/size/quantity
+      // instead of pulling the user's full cart. Confirm your /api/v1/orders
+      // route on the backend actually supports this — if it currently always
+      // builds the order from the cart, it needs a small update to honor an
+      // `items` override when present.
+      const orderPayload = isBuyNow
+        ? {
+            ...details,
+            paymentMethod,
+            buyNow: true,
+            items: orderItems.map(({ productId, size, quantity, price }) => ({
+              product: productId, size, quantity, price
+            })),
+          }
+        : {
+            ...details,
+            paymentMethod
+          };
+
+      const res = await API.post("/api/v1/orders", orderPayload);
 
       const order = res.data.data;
       const orderId = order._id;
       setPlacedOrderId(orderId);
-      await fetchCart();
+
+      // Only the cart-based flow needs a cart refresh — a Buy Now purchase
+      // never touched the cart, so there's nothing to re-fetch/clear there.
+      if (!isBuyNow) await fetchCart();
 
       if (paymentMethod === "cod") {
         setSuccess(true);
@@ -253,7 +305,14 @@ export default function Checkout() {
       <div className="max-w-4xl mx-auto space-y-5">
 
         <div>
-          <h1 className="text-2xl font-black text-gray-900">Checkout</h1>
+          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+            Checkout
+            {isBuyNow && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                <Zap size={11} className="fill-current" /> Buy Now
+              </span>
+            )}
+          </h1>
           <p className="text-xs text-gray-400 mt-0.5">Review your order and complete purchase</p>
         </div>
 
@@ -444,33 +503,29 @@ export default function Checkout() {
               <div className="p-5 space-y-4">
 
                 <div className="space-y-3 max-h-48 overflow-y-auto">
-                  {cart?.items?.map((item) => {
-                    const productName  = item.product?.name || "Product";
-                    const productImage = item.product?.images?.[0];
-                    return (
-                      <div key={`${item.product?._id}-${item.size}`} className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-100 shrink-0">
-                          {productImage
-                            ? <img src={productImage} alt={productName} className="w-full h-full object-cover" />
-                            : <div className="w-full h-full flex items-center justify-center">
-                                <ShoppingBag size={14} className="text-gray-300" />
-                              </div>
-                          }
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800 line-clamp-1">{productName}</p>
-                          <p className="text-xs text-gray-400">Size: {item.size} × {item.quantity}</p>
-                        </div>
-                        <p className="text-xs font-black text-gray-800 shrink-0">₹{item.price * item.quantity}</p>
+                  {orderItems.map((item) => (
+                    <div key={`${item.productId}-${item.size}`} className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+                        {item.image
+                          ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center">
+                              <ShoppingBag size={14} className="text-gray-300" />
+                            </div>
+                        }
                       </div>
-                    );
-                  })}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 line-clamp-1">{item.name}</p>
+                        <p className="text-xs text-gray-400">Size: {item.size} × {item.quantity}</p>
+                      </div>
+                      <p className="text-xs font-black text-gray-800 shrink-0">₹{item.price * item.quantity}</p>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="border-t border-gray-100 pt-3 space-y-2">
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Subtotal</span>
-                    <span className="font-semibold">₹{total}</span>
+                    <span className="font-semibold">₹{orderTotal}</span>
                   </div>
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Delivery</span>
@@ -478,7 +533,7 @@ export default function Checkout() {
                   </div>
                   <div className="flex justify-between text-sm font-black text-gray-900 pt-1 border-t border-gray-100">
                     <span>Total</span>
-                    <span className="text-blue-600 text-base">₹{total}</span>
+                    <span className="text-blue-600 text-base">₹{orderTotal}</span>
                   </div>
                 </div>
 

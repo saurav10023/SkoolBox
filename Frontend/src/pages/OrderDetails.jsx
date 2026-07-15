@@ -3,12 +3,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Package, MapPin, Phone, CreditCard,
   Clock, CheckCircle, Truck, XCircle, AlertCircle,
-  ShoppingBag, Loader2, Ban
+  ShoppingBag, Loader2, Ban, Trash2, FileDown
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import API from "../api/axios";
 import { generateInvoice } from "../utils/generateInvoice.js";
-import { FileDown } from "lucide-react";
 
 const STATUS_STEPS = ["placed", "processing", "shipped", "delivered"];
 
@@ -27,6 +26,41 @@ const PAYMENT_STATUS_STYLES = {
   refund_initiated: "bg-orange-100 text-orange-700",
 };
 
+// Small reusable confirm dialog — used for both Cancel and Delete so the
+// two destructive actions look and behave consistently.
+const ConfirmDialog = ({ icon, title, message, confirmLabel, confirmColor, onConfirm, onCancel, loading }) => (
+  <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center px-4 py-4">
+    <div className="bg-white rounded-2xl p-5 sm:p-6 max-w-sm w-full shadow-2xl space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-black text-gray-900">{title}</p>
+          <p className="text-xs text-gray-400">{message}</p>
+        </div>
+      </div>
+      <div className="flex gap-3">
+        <button
+          onClick={onCancel}
+          disabled={loading}
+          className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={loading}
+          className={`flex-1 py-2.5 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 ${confirmColor}`}
+        >
+          {loading && <Loader2 size={14} className="animate-spin" />}
+          {confirmLabel}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 export default function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -35,12 +69,18 @@ export default function OrderDetail() {
   const [order, setOrder]               = useState(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState("");
+
   const [cancelling, setCancelling]     = useState(false);
   const [cancelError, setCancelError]   = useState("");
   const [cancelSuccess, setCancelSuccess] = useState("");
-  const [showConfirm, setShowConfirm]   = useState(false);
-  const [paymentLoading, setPaymentLoading] = useState(false);  // NEW
-  const [paymentError, setPaymentError]     = useState("");     // NEW
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+
+  const [deleting, setDeleting]         = useState(false);
+  const [deleteError, setDeleteError]   = useState("");
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError]     = useState("");
 
   // Load Razorpay script
   useEffect(() => {
@@ -54,6 +94,7 @@ export default function OrderDetail() {
   useEffect(() => {
     if (!user) { navigate("/login"); return; }
     fetchOrder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, user]);
 
   const fetchOrder = async () => {
@@ -70,7 +111,7 @@ export default function OrderDetail() {
   const handleCancelOrder = async () => {
     setCancelling(true);
     setCancelError("");
-    setShowConfirm(false);
+    setShowConfirmCancel(false);
     try {
       const res = await API.patch(`/api/v1/orders/${id}/cancel`);
       setOrder(res.data.data);
@@ -79,6 +120,21 @@ export default function OrderDetail() {
       setCancelError(err.response?.data?.message || "Failed to cancel order.");
     } finally {
       setCancelling(false);
+    }
+  };
+
+  // Permanently deletes THIS order, then returns to the order list —
+  // there's nothing left here to show once it's gone.
+  const handleDeleteOrder = async () => {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await API.delete(`/api/v1/orders/${id}`);
+      navigate("/profile", { state: { orderDeleted: true } });
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || "Failed to delete order.");
+      setShowConfirmDelete(false);
+      setDeleting(false);
     }
   };
 
@@ -144,11 +200,16 @@ export default function OrderDetail() {
   const currentStepIndex = STATUS_STEPS.indexOf(order?.orderStatus);
   const isCancelled = order?.orderStatus === "cancelled";
   const canCancel   = order?.orderStatus === "placed" || order?.orderStatus === "processing";
-  const canPay      = order?.paymentMethod === "online" && order?.paymentStatus === "pending" && order?.orderStatus === "placed"; // NEW
+  const canPay      = order?.paymentMethod === "online" && order?.paymentStatus === "pending" && order?.orderStatus === "placed";
+  // Mirrors the backend rule: only delivered/cancelled orders (and no refund
+  // in progress) can be permanently deleted.
+  const canDelete   = order &&
+    ["delivered", "cancelled"].includes(order.orderStatus) &&
+    order.paymentStatus !== "refund_initiated";
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="min-h-screen bg-gray-50 py-6 sm:py-8 px-4">
         <div className="max-w-3xl mx-auto space-y-4 animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-32" />
           <div className="h-24 bg-white rounded-2xl border border-gray-100" />
@@ -161,7 +222,7 @@ export default function OrderDetail() {
 
   if (error || !order) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4 px-4">
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4 px-4 text-center">
         <AlertCircle size={40} className="text-red-400" />
         <p className="text-gray-500 text-base">{error || "Order not found"}</p>
         <button onClick={() => navigate("/profile")}
@@ -175,7 +236,7 @@ export default function OrderDetail() {
   const status = STATUS_STYLES[order.orderStatus] || STATUS_STYLES.placed;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 py-6 sm:py-8 px-4">
       <div className="max-w-3xl mx-auto space-y-5">
 
         <button onClick={() => navigate("/profile")}
@@ -184,11 +245,11 @@ export default function OrderDetail() {
         </button>
 
         {/* Header */}
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 sm:p-5">
           <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">Order</p>
-              <h1 className="text-xl font-black text-gray-900">
+              <h1 className="text-lg sm:text-xl font-black text-gray-900 break-all">
                 #{order.orderNumber || order._id.slice(-6).toUpperCase()}
               </h1>
               <p className="text-xs text-gray-400">
@@ -211,25 +272,30 @@ export default function OrderDetail() {
         {/* Feedback messages */}
         {cancelError && (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
-            <AlertCircle size={15} /> {cancelError}
+            <AlertCircle size={15} className="shrink-0" /> {cancelError}
           </div>
         )}
         {cancelSuccess && (
           <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
-            <CheckCircle size={15} /> {cancelSuccess}
+            <CheckCircle size={15} className="shrink-0" /> {cancelSuccess}
           </div>
         )}
         {paymentError && (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
-            <AlertCircle size={15} /> {paymentError}
+            <AlertCircle size={15} className="shrink-0" /> {paymentError}
+          </div>
+        )}
+        {deleteError && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
+            <AlertCircle size={15} className="shrink-0" /> {deleteError}
           </div>
         )}
 
         {/* Status Timeline */}
         {!isCancelled && (
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 sm:p-5 overflow-x-auto">
             <h2 className="text-sm font-black text-gray-900 mb-5">Order Progress</h2>
-            <div className="flex items-center justify-between relative">
+            <div className="flex items-center justify-between relative min-w-[320px]">
               <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 z-0" />
               <div
                 className="absolute top-4 left-0 h-0.5 bg-blue-500 z-0 transition-all duration-500"
@@ -260,7 +326,7 @@ export default function OrderDetail() {
 
         {/* Cancelled banner */}
         {isCancelled && (
-          <div className="flex items-center gap-3 bg-red-50 border border-red-200 px-5 py-4 rounded-2xl">
+          <div className="flex items-center gap-3 bg-red-50 border border-red-200 px-4 sm:px-5 py-4 rounded-2xl">
             <XCircle size={20} className="text-red-500 shrink-0" />
             <div>
               <p className="text-sm font-bold text-red-700">Order Cancelled</p>
@@ -271,7 +337,7 @@ export default function OrderDetail() {
 
         {/* Order Items */}
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2 px-4 sm:px-5 py-4 border-b border-gray-100">
             <Package size={16} className="text-blue-600" />
             <h2 className="text-sm font-black text-gray-900">Items ({order.orderItems?.length})</h2>
           </div>
@@ -280,9 +346,9 @@ export default function OrderDetail() {
               const name  = item.product?.name || "Product";
               const image = item.product?.images?.[0];
               return (
-                <div key={i} className="flex items-center gap-4 px-5 py-4">
+                <div key={i} className="flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4">
                   <div
-                    className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 shrink-0 cursor-pointer"
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden bg-gray-100 shrink-0 cursor-pointer"
                     onClick={() => item.product?._id && navigate(`/products/${item.product._id}`)}
                   >
                     {image ? (
@@ -300,7 +366,7 @@ export default function OrderDetail() {
                     >
                       {name}
                     </p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-lg">
                         Size: {item.size}
                       </span>
@@ -315,7 +381,7 @@ export default function OrderDetail() {
               );
             })}
           </div>
-          <div className="px-5 py-4 border-t border-gray-100 flex justify-between items-center bg-gray-50">
+          <div className="px-4 sm:px-5 py-4 border-t border-gray-100 flex justify-between items-center bg-gray-50">
             <span className="text-sm font-bold text-gray-700">Order Total</span>
             <span className="text-lg font-black text-blue-600">₹{order.totalAmount}</span>
           </div>
@@ -323,7 +389,7 @@ export default function OrderDetail() {
 
         {/* Delivery + Payment Info */}
         <div className="grid sm:grid-cols-2 gap-4">
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-3">
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 sm:p-5 space-y-3">
             <div className="flex items-center gap-2">
               <MapPin size={15} className="text-blue-600" />
               <h3 className="text-sm font-black text-gray-900">Delivery Address</h3>
@@ -337,7 +403,7 @@ export default function OrderDetail() {
             </div>
           </div>
 
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-3">
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 sm:p-5 space-y-3">
             <div className="flex items-center gap-2">
               <CreditCard size={15} className="text-blue-600" />
               <h3 className="text-sm font-black text-gray-900">Payment Info</h3>
@@ -354,15 +420,15 @@ export default function OrderDetail() {
                 </span>
               </div>
               {order.transactionId && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-400">Transaction ID</span>
-                  <span className="font-mono text-gray-600 text-xs">{order.transactionId}</span>
+                <div className="flex justify-between text-xs gap-2">
+                  <span className="text-gray-400 shrink-0">Transaction ID</span>
+                  <span className="font-mono text-gray-600 text-xs truncate">{order.transactionId}</span>
                 </div>
               )}
               {order.razorpayPaymentId && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-400">Payment ID</span>
-                  <span className="font-mono text-gray-600 text-xs">{order.razorpayPaymentId}</span>
+                <div className="flex justify-between text-xs gap-2">
+                  <span className="text-gray-400 shrink-0">Payment ID</span>
+                  <span className="font-mono text-gray-600 text-xs truncate">{order.razorpayPaymentId}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs pt-1 border-t border-gray-100">
@@ -375,7 +441,7 @@ export default function OrderDetail() {
 
         {/* Pay Now card */}
         {canPay && (
-          <div className="bg-white border border-blue-100 rounded-2xl shadow-sm p-5">
+          <div className="bg-white border border-blue-100 rounded-2xl shadow-sm p-4 sm:p-5">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <p className="text-sm font-bold text-gray-800">Complete your payment</p>
@@ -386,7 +452,7 @@ export default function OrderDetail() {
               <button
                 onClick={handlePayNow}
                 disabled={paymentLoading}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50 w-full sm:w-auto justify-center"
               >
                 {paymentLoading
                   ? <Loader2 size={14} className="animate-spin" />
@@ -400,7 +466,7 @@ export default function OrderDetail() {
 
         {/* Cancel Order */}
         {canCancel && (
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 sm:p-5">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <p className="text-sm font-bold text-gray-800">Need to cancel?</p>
@@ -409,9 +475,9 @@ export default function OrderDetail() {
                 </p>
               </div>
               <button
-                onClick={() => setShowConfirm(true)}
+                onClick={() => setShowConfirmCancel(true)}
                 disabled={cancelling}
-                className="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 w-full sm:w-auto justify-center"
               >
                 {cancelling ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
                 {cancelling ? "Cancelling..." : "Cancel Order"}
@@ -419,41 +485,57 @@ export default function OrderDetail() {
             </div>
           </div>
         )}
-        <button
+
+        {/* Invoice + Delete row */}
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <button
             onClick={() => generateInvoice(order)}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-all font-medium"
-            >
+            className="flex items-center justify-center gap-1.5 text-xs px-3 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-all font-medium w-full sm:w-auto"
+          >
             <FileDown size={12} />
             Download Invoice
-        </button>
-        {/* Confirm Cancel Modal */}
-        {showConfirm && (
-          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
-            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <XCircle size={20} className="text-red-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-black text-gray-900">Cancel Order?</p>
-                  <p className="text-xs text-gray-400">This action cannot be undone.</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setShowConfirm(false)}
-                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-                  Keep Order
-                </button>
-                <button onClick={handleCancelOrder}
-                  className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition-colors">
-                  Yes, Cancel
-                </button>
-                // Inside your order card
-                
-              </div>
+          </button>
 
-            </div>
-          </div>
+          {/* Permanently delete this order — only once it's in a final
+              state, mirroring the backend's own guard. */}
+          {canDelete && (
+            <button
+              onClick={() => setShowConfirmDelete(true)}
+              disabled={deleting}
+              className="flex items-center justify-center gap-1.5 text-xs px-3 py-2 border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-all font-medium disabled:opacity-50 w-full sm:w-auto"
+            >
+              {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              {deleting ? "Deleting..." : "Delete Order"}
+            </button>
+          )}
+        </div>
+
+        {/* Confirm Cancel Modal */}
+        {showConfirmCancel && (
+          <ConfirmDialog
+            icon={<XCircle size={20} className="text-red-500" />}
+            title="Cancel Order?"
+            message="This action cannot be undone."
+            confirmLabel="Yes, Cancel"
+            confirmColor="bg-red-500 hover:bg-red-600"
+            onCancel={() => setShowConfirmCancel(false)}
+            onConfirm={handleCancelOrder}
+            loading={cancelling}
+          />
+        )}
+
+        {/* Confirm Delete Modal */}
+        {showConfirmDelete && (
+          <ConfirmDialog
+            icon={<Trash2 size={20} className="text-red-500" />}
+            title="Permanently Delete Order?"
+            message="This will remove the order from your history forever. This cannot be undone."
+            confirmLabel="Yes, Delete"
+            confirmColor="bg-red-600 hover:bg-red-700"
+            onCancel={() => setShowConfirmDelete(false)}
+            onConfirm={handleDeleteOrder}
+            loading={deleting}
+          />
         )}
 
       </div>

@@ -231,12 +231,12 @@ const Footer = () => {
           <p>
             Developed by{" "}
             <a
-              href="https://github.com/YOUR_USERNAME"
+              href="https://github.com/saurav10023"
               target="_blank"
               rel="noreferrer"
               className="text-gray-400 hover:text-blue-400 font-medium transition-colors duration-200"
             >
-              @YOUR_USERNAME
+              Kumar Saurav
             </a>
           </p>
         </div>
