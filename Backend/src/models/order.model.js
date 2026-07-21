@@ -1,11 +1,12 @@
 import mongoose, { Schema } from "mongoose";
+import { Counter } from "./counter.model.js";
 
 const orderSchema = new Schema(
   {
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      default : null 
+      default: null
     },
 
     orderNumber: {
@@ -48,14 +49,14 @@ const orderSchema = new Schema(
 
     paymentStatus: {
       type: String,
-      enum: ["pending", "paid", "failed","refund_initiated","refund_completed"],
+      enum: ["pending", "paid", "failed", "refund_initiated", "refund_completed"],
       default: "pending"
     },
     transactionId: {
       type: String,
       default: null
     },
-    // NEW — Razorpay fields
+    // Razorpay fields
     razorpayOrderId: {
       type: String,
       default: null
@@ -87,33 +88,37 @@ const orderSchema = new Schema(
     },
 
     customerName: {
-    type: String,
-    default: null
+      type: String,
+      default: null
     },
     email: {
-    type: String,
-    default: null
+      type: String,
+      default: null
     },
 
-  pincode: {
-    type: String,
-    default: null
-  },
+    pincode: {
+      type: String,
+      default: null
+    },
 
-  createdByAdmin: {
-    type: Boolean,
-    default: false
-  },
+    createdByAdmin: {
+      type: Boolean,
+      default: false
+    }
   },
   {
     timestamps: true
   }
 );
 
-orderSchema.pre("save", async function () {
-  if (this.isNew) {
-    const count = await mongoose.model("Order").countDocuments();
-    this.orderNumber = 1000 + count + 1;
+orderSchema.pre("save", async function (next) {
+  if (this.isNew && !this.orderNumber) {
+    const counter = await Counter.findByIdAndUpdate(
+      { _id: "orderNumber" },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    this.orderNumber = counter.seq;
   }
 });
 

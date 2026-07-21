@@ -7,6 +7,26 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 // NO Razorpay imports here — that lives in payment.controller.js
 // import Razorpay from "razorpay"
+
+/* ---------------- HELPER: create order with retry on orderNumber collision ---------------- */
+// Safety net only — the atomic Counter in order.model.js should prevent this
+// from ever firing, but this guards against edge cases like manual/bulk
+// inserts that bypass the counter.
+async function createOrderWithRetry(orderData, attempts = 2) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await Order.create(orderData);
+    } catch (err) {
+      const isDuplicateOrderNumber =
+        err.code === 11000 && err.keyPattern?.orderNumber;
+      if (isDuplicateOrderNumber && i < attempts - 1) {
+        continue; // pre-save hook will draw a fresh number on retry
+      }
+      throw err;
+    }
+  }
+}
+
 /* ---------------- CREATE ORDER ---------------- */
 const createOrder = asyncHandler(async (req, res) => {
   const { deliveryAddress, city, phoneNumber, paymentMethod, buyNow, items } = req.body;
@@ -97,7 +117,7 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   // Just create DB order — no Razorpay here
-  const order = await Order.create({
+  const order = await createOrderWithRetry({
     user: req.user._id,
     orderItems,
     totalAmount,
@@ -223,6 +243,7 @@ const cancelOrder = asyncHandler(async (req, res) => {
     new ApiResponse(200, order, "Order cancelled successfully")
   );
 });
+
 /* ---------------- DELETE ORDER — permanent (customer) ---------------- */
 // HARD delete — this permanently removes the order document from the DB.
 // Only allowed once the order is in a final state (delivered/cancelled),
@@ -261,7 +282,7 @@ const updatePaymentStatus = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
   const { paymentStatus, transactionId } = req.body;
 
-  const validStatuses = ["pending", "paid", "failed", "refund_initiated","refund_completed"];
+  const validStatuses = ["pending", "paid", "failed", "refund_initiated", "refund_completed"];
   if (!paymentStatus || !validStatuses.includes(paymentStatus)) {
     throw new ApiError(400, "Invalid payment status");
   }
@@ -313,25 +334,6 @@ const getOrderByIdAdmin = asyncHandler(async (req, res) => {
     new ApiResponse(200, order, "Order fetched successfully")
   );
 });
-
-// const getOrdersGroupedAdmin = asyncHandler(async (req, res) => {
-//   const orders = await Order.find()
-//     .populate("orderItems.product")
-//     .populate("user", "username email mobileNumber")
-//     .sort({ createdAt: -1 });
-
-//   const active = orders.filter(o =>
-//     ["placed", "processing", "shipped"].includes(o.orderStatus)
-//   );
-
-//   const completed = orders.filter(o =>
-//     ["delivered", "cancelled"].includes(o.orderStatus)
-//   );
-
-//   return res.status(200).json(
-//     new ApiResponse(200, { active, completed }, "Orders fetched successfully")
-//   );
-// });
 
 const getOrdersGroupedAdmin = asyncHandler(async (req, res) => {
   const orders = await Order.find()
@@ -393,6 +395,7 @@ const getOrdersGroupedAdmin = asyncHandler(async (req, res) => {
     new ApiResponse(200, { active, completed }, "Orders fetched successfully")
   );
 });
+
 const getUserOrdersAdmin = asyncHandler(async (req, res) => {
   const { userId } = req.params;
 
@@ -468,7 +471,7 @@ const createOrderAdmin = asyncHandler(async (req, res) => {
     );
   }
 
-  const order = await Order.create({
+  const order = await createOrderWithRetry({
     user: null,
     customerName,
     email: email || null,
