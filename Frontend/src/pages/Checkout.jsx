@@ -218,6 +218,11 @@ export default function Checkout() {
         order_id: razorpayOrderId,
         name: "The Little Kingdom",
         description: "Order Payment",
+        config: {
+        display: {
+          configuration: "config_TG72UyLMP5Jdf1"
+        }
+        },
         handler: async function (response) {
           try {
             await API.post("/api/v1/payment/verify", {
