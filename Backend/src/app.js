@@ -24,7 +24,9 @@ import cartRouter from "./routes/cart.routes.js";
 import orderRouter from "./routes/order.routes.js";
 import paymentRouter from "./routes/payment.routes.js";
 import adminrouter from "./routes/admin.routes.js";
+import analyticsRouter from "./routes/analytics.routes.js"
 app.use("/api/v1/users", userRouter);
+app.use("/api/v1/admin/analytics", analyticsRouter)
 app.use("/api/v1/products", productRouter);
 app.use("/api/v1/cart", cartRouter);
 app.use("/api/v1/orders", orderRouter);
