@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingCart, Menu, X, LogOut, Shield, User, ChevronRight } from "lucide-react";
+import { ShoppingCart, Menu, X, LogOut, Shield, ChevronRight, Search, Loader2, ShoppingBag } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+import API from "../api/axios";
 
 // Same logo asset used across the auth pages / footer / invoice
 import logo from "../assets/logo.png";
@@ -14,17 +15,74 @@ const Navbar = () => {
   const navigate = useNavigate();
   const { cartCount } = useCart();
 
+  // ── Search state (shared logic, two UIs: desktop dropdown + mobile panel) ──
+  const [searchOpen, setSearchOpen] = useState(false);       // desktop expandable bar
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false); // mobile overlay
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const searchBoxRef = useRef(null);
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Lock body scroll when mobile menu is open
+  // Lock body scroll when mobile menu or mobile search overlay is open
   useEffect(() => {
-    document.body.style.overflow = menuOpen ? "hidden" : "";
+    document.body.style.overflow = (menuOpen || mobileSearchOpen) ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [menuOpen]);
+  }, [menuOpen, mobileSearchOpen]);
+
+  // Close desktop search dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Debounced live search — hits the /products/filter?name= endpoint
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await API.get(`/api/v1/products/filter?name=${encodeURIComponent(query.trim())}&limit=6`);
+        setResults(res.data?.data?.products || []);
+      } catch (err) {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 350); // debounce so we're not firing a request on every keystroke
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const goToResults = () => {
+    if (!query.trim()) return;
+    navigate(`/products?search=${encodeURIComponent(query.trim())}`);
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+    setMenuOpen(false);
+  };
+
+  const goToProduct = (id) => {
+    navigate(`/products/${id}`);
+    setQuery("");
+    setResults([]);
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+  };
 
   const scrollToSection = (id) => {
     setMenuOpen(false);
@@ -41,19 +99,68 @@ const Navbar = () => {
   const navLinks = [
     { label: "Uniforms", to: "/products?category=uniform" },
     { label: "Bags",     to: "/products?category=bag" },
+    { label: "Socks",    to: "/products?category=socks" },
   ];
+
+  // Shared results dropdown, reused for both desktop and mobile
+  const ResultsList = ({ compact }) => (
+    <div className={compact ? "" : "border-t border-gray-100 mt-2 pt-2"}>
+      {searching ? (
+        <div className="flex items-center gap-2 px-3 py-4 text-sm text-gray-400">
+          <Loader2 size={15} className="animate-spin" />
+          Searching...
+        </div>
+      ) : results.length > 0 ? (
+        <>
+          {results.map((p) => {
+            const minPrice = p.sizes?.length ? Math.min(...p.sizes.map(s => s.price)) : null;
+            return (
+              <button
+                key={p._id}
+                onClick={() => goToProduct(p._id)}
+                className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-blue-50 rounded-lg transition-colors text-left"
+              >
+                <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden shrink-0">
+                  {p.images?.[0] ? (
+                    <img src={p.images[0]} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <ShoppingBag size={14} className="text-gray-300" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
+                  <p className="text-xs text-gray-400 capitalize">{p.category}</p>
+                </div>
+                {minPrice !== null && (
+                  <span className="text-sm font-bold text-blue-600 shrink-0">₹{minPrice}</span>
+                )}
+              </button>
+            );
+          })}
+          <button
+            onClick={goToResults}
+            className="w-full text-center text-xs font-semibold text-blue-600 hover:underline py-2.5 mt-1 border-t border-gray-50"
+          >
+            See all results for "{query}"
+          </button>
+        </>
+      ) : query.trim() ? (
+        <p className="px-3 py-4 text-sm text-gray-400 text-center">No products found for "{query}"</p>
+      ) : null}
+    </div>
+  );
 
   return (
     <>
       <nav
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-white/95 backdrop-blur-md ${
-          scrolled
-            ? "shadow-sm border-b border-gray-100"
-            : "border-b border-transparent"
+          scrolled ? "shadow-sm border-b border-gray-100" : "border-b border-transparent"
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-14 sm:h-16 lg:h-[4.25rem]">
+          <div className="flex justify-between items-center h-14 sm:h-16 lg:h-[4.25rem] gap-2">
 
             {/* ── Logo ── */}
             <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group shrink-0">
@@ -95,6 +202,40 @@ const Navbar = () => {
 
             {/* ── Desktop / Tablet Right ── */}
             <div className="hidden md:flex items-center gap-1.5">
+
+              {/* Search */}
+              <div ref={searchBoxRef} className="relative">
+                <div
+                  className={`flex items-center bg-gray-100 rounded-lg transition-all duration-200 overflow-hidden ${
+                    searchOpen ? "w-56 lg:w-72 px-3" : "w-9 px-0 justify-center"
+                  }`}
+                >
+                  <button
+                    onClick={() => setSearchOpen(true)}
+                    className="p-2 text-gray-500 hover:text-blue-600 shrink-0"
+                    aria-label="Search products"
+                  >
+                    <Search size={17} />
+                  </button>
+                  {searchOpen && (
+                    <input
+                      autoFocus
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && goToResults()}
+                      placeholder="Search products..."
+                      className="w-full bg-transparent text-sm py-2 focus:outline-none text-gray-700 placeholder:text-gray-400"
+                    />
+                  )}
+                </div>
+
+                {/* Dropdown results */}
+                {searchOpen && query.trim() && (
+                  <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 p-2 max-h-96 overflow-y-auto">
+                    <ResultsList compact />
+                  </div>
+                )}
+              </div>
 
               {/* Cart */}
               <Link
@@ -161,6 +302,13 @@ const Navbar = () => {
 
             {/* ── Mobile Right ── */}
             <div className="md:hidden flex items-center gap-0.5">
+              <button
+                onClick={() => setMobileSearchOpen(true)}
+                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                aria-label="Search products"
+              >
+                <Search size={20} />
+              </button>
               <Link to="/cart" className="relative p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                 <ShoppingCart size={20} />
                 {cartCount > 0 && (
@@ -180,6 +328,37 @@ const Navbar = () => {
           </div>
         </div>
       </nav>
+
+      {/* ── Mobile Search Overlay ── */}
+      <div
+        className={`md:hidden fixed inset-0 z-50 bg-white transition-all duration-200 flex flex-col ${
+          mobileSearchOpen ? "visible opacity-100" : "invisible opacity-0"
+        }`}
+      >
+        <div className="flex items-center gap-2 px-4 h-14 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 flex-1">
+            <Search size={17} className="text-gray-400 shrink-0" />
+            <input
+              autoFocus={mobileSearchOpen}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && goToResults()}
+              placeholder="Search products..."
+              className="w-full bg-transparent text-sm py-2.5 focus:outline-none text-gray-700 placeholder:text-gray-400"
+            />
+          </div>
+          <button
+            onClick={() => { setMobileSearchOpen(false); setQuery(""); setResults([]); }}
+            className="p-2 text-gray-500 shrink-0"
+            aria-label="Close search"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          <ResultsList compact />
+        </div>
+      </div>
 
       {/* ── Mobile Slide-over Menu ── */}
       <div

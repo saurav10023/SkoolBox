@@ -7,7 +7,8 @@ import {
   getAllProducts,
   getProductById,
   getProductByCategory,
-  toggleAvailability
+  toggleAvailability,
+  filterProducts
 } from "../controllers/product.controller.js";
 
 import { verifyAdmin } from "../middlewares/authAdmin.middleware.js";
@@ -18,6 +19,7 @@ const router = express.Router();
 
 /* ---------------- PUBLIC ROUTES ---------------- */
 router.get("/", getAllProducts);
+router.get("/filter", filterProducts);
 router.get("/category/:category", getProductByCategory);
 router.get("/:productId", getProductById);
 

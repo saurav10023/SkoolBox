@@ -157,6 +157,74 @@ const toggleAvailability = asyncHandler(async (req, res) => {
     new ApiResponse(200, { isAvailable: product.isAvailable }, "Product availability updated")
   );
 });
+/* ---------------- FILTER / SEARCH PRODUCTS ---------------- */
+const filterProducts = asyncHandler(async (req, res) => {
+  const {
+    name,          // e.g. "set" -> matches "Set of 3", "Combo Set", etc.
+    category,
+    size,          // e.g. "M", "10"
+    minPrice,
+    maxPrice,
+    inStock,       // "true" -> only sizes with stock > 0
+    isAvailable,
+    sort,          // "priceAsc" | "priceDesc" | "newest" | "oldest"
+    page = 1,
+    limit = 20,
+  } = req.query;
+
+  const filter = {};
+
+  // Partial, case-insensitive match on name (covers your "set" use case)
+  if (name) {
+    filter.name = { $regex: name.trim(), $options: "i" };
+  }
+
+  if (category) {
+    filter.category = category.toLowerCase().trim();
+  }
+
+  if (isAvailable !== undefined) {
+    filter.isAvailable = isAvailable === "true";
+  }
+
+  // sizes is an array of subdocuments, so size/price/stock filters
+  // need $elemMatch to make sure conditions apply to the SAME size entry
+  const sizeConditions = {};
+  if (size) sizeConditions.size = size.trim();
+  if (minPrice || maxPrice) {
+    sizeConditions.price = {};
+    if (minPrice) sizeConditions.price.$gte = Number(minPrice);
+    if (maxPrice) sizeConditions.price.$lte = Number(maxPrice);
+  }
+  if (inStock === "true") {
+    sizeConditions.stock = { $gt: 0 };
+  }
+  if (Object.keys(sizeConditions).length > 0) {
+    filter.sizes = { $elemMatch: sizeConditions };
+  }
+
+  // Sorting
+  let sortQuery = { createdAt: -1 }; // default: newest first
+  if (sort === "priceAsc") sortQuery = { "sizes.price": 1 };
+  if (sort === "priceDesc") sortQuery = { "sizes.price": -1 };
+  if (sort === "oldest") sortQuery = { createdAt: 1 };
+
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const [products, total] = await Promise.all([
+    Product.find(filter).sort(sortQuery).skip(skip).limit(Number(limit)),
+    Product.countDocuments(filter),
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(200, {
+      products,
+      total,
+      page: Number(page),
+      totalPages: Math.ceil(total / Number(limit)),
+    }, "Products filtered successfully")
+  );
+});
 
 export {
   createProduct,
@@ -166,5 +234,6 @@ export {
   updateProduct,
   deleteProduct,
   updateStock,
-  toggleAvailability
+  toggleAvailability,
+  filterProducts
 };
