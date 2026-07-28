@@ -35,9 +35,16 @@ const createOrder = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required");
   }
 
-  const validPaymentMethods = ["cod", "online"];
+  // const validPaymentMethods = ["cod", "online"];
+  // if (!validPaymentMethods.includes(paymentMethod)) {
+  //   throw new ApiError(400, "Invalid payment method. Use 'cod' or 'online'");
+  // }
+  // COD disabled for customer-placed orders — online payment only.
+  // (Admin can still record COD manually via createOrderAdmin for
+  // offline/manual orders; existing COD orders are untouched.)
+  const validPaymentMethods = ["online"];
   if (!validPaymentMethods.includes(paymentMethod)) {
-    throw new ApiError(400, "Invalid payment method. Use 'cod' or 'online'");
+    throw new ApiError(400, "Only online payment is supported. COD is no longer available.");
   }
 
   let totalAmount = 0;

@@ -2,28 +2,18 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   MapPin, Phone, Plus, CheckCircle, AlertCircle,
-  ChevronRight, ShoppingBag, Loader2, Tag, X, Banknote, Smartphone, Star, Zap
+  ChevronRight, ShoppingBag, Loader2, Tag, X, ShieldCheck, Star, Zap, CreditCard
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import API from "../api/axios";
 
-const PAYMENT_METHODS = [
-  {
-    id: "cod",
-    label: "Cash on Delivery",
-    description: "Pay when your order arrives",
-    icon: <Banknote size={18} className="text-green-600" />,
-    selectedColor: "border-green-500 bg-green-50"
-  },
-  {
-    id: "online",
-    label: "Online Payment",
-    description: "Pay via UPI, Card or Netbanking",
-    icon: <Smartphone size={18} className="text-blue-600" />,
-    selectedColor: "border-blue-500 bg-blue-50"
-  }
-];
+// COD has been intentionally removed — this app is online-payment-only now.
+// Payment method is no longer a user choice, so there's nothing to render as a
+// selectable list. See the bottom of this file / the chat response for the
+// other places (backend + admin) that need the same change to make this
+// change hold end-to-end rather than just hiding it in this one screen.
+const PAYMENT_METHOD = "online";
 
 const EMPTY_NEW = { name: "", phone: "", fullAddress: "", city: "" };
 
@@ -68,7 +58,6 @@ export default function Checkout() {
   const [showNewForm, setShowNewForm]         = useState(false);
   const [newAddress, setNewAddress]           = useState(EMPTY_NEW);
   const [saveNewAddress, setSaveNewAddress]   = useState(false);
-  const [paymentMethod, setPaymentMethod]     = useState("cod");
   const [loading, setLoading]                 = useState(true);
   const [placing, setPlacing]                 = useState(false);
   const [error, setError]                     = useState("");
@@ -177,10 +166,14 @@ export default function Checkout() {
       // route on the backend actually supports this — if it currently always
       // builds the order from the cart, it needs a small update to honor an
       // `items` override when present.
+      //
+      // paymentMethod is always "online" now — see note at top of file.
+      // The backend must independently reject/ignore any "cod" value it
+      // receives; don't rely on this screen alone to enforce that.
       const orderPayload = isBuyNow
         ? {
             ...details,
-            paymentMethod,
+            paymentMethod: PAYMENT_METHOD,
             buyNow: true,
             items: orderItems.map(({ productId, size, quantity, price }) => ({
               product: productId, size, quantity, price
@@ -188,7 +181,7 @@ export default function Checkout() {
           }
         : {
             ...details,
-            paymentMethod
+            paymentMethod: PAYMENT_METHOD
           };
 
       const res = await API.post("/api/v1/orders", orderPayload);
@@ -201,13 +194,7 @@ export default function Checkout() {
       // never touched the cart, so there's nothing to re-fetch/clear there.
       if (!isBuyNow) await fetchCart();
 
-      if (paymentMethod === "cod") {
-        setSuccess(true);
-        setTimeout(() => navigate(`/orders/${orderId}`), 2500);
-        return;
-      }
-
-      // Online — Razorpay
+      // Online — Razorpay (the only path now; no COD branch)
       const payRes = await API.post("/api/v1/payment/create-order", { orderId });
       const { razorpayOrderId, amount, currency, key } = payRes.data.data;
 
@@ -256,15 +243,13 @@ export default function Checkout() {
     } catch (err) {
       setError(err.response?.data?.message || "Failed to place order. Please try again.");
       setPlacing(false);
-    } finally {
-      if (paymentMethod === "cod") setPlacing(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4">
-        <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-5 animate-pulse">
+      <div className="min-h-screen bg-gray-50 py-6 sm:py-8 px-3 sm:px-4">
+        <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-4 sm:gap-5 animate-pulse">
           <div className="md:col-span-2 space-y-4">
             <div className="h-48 bg-white rounded-2xl border border-gray-100" />
             <div className="h-32 bg-white rounded-2xl border border-gray-100" />
@@ -277,17 +262,15 @@ export default function Checkout() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 max-w-sm w-full text-center space-y-4">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-8">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 sm:p-10 max-w-sm w-full text-center space-y-4">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle size={32} className="text-green-500" />
           </div>
           <div className="space-y-1">
             <h2 className="text-xl font-black text-gray-900">Order Placed!</h2>
             <p className="text-sm text-gray-400">
-              {paymentMethod === "cod"
-                ? "Your order has been placed. Redirecting to order details..."
-                : "Payment successful! Redirecting to order details..."}
+              Payment successful! Redirecting to order details...
             </p>
           </div>
           <div className="flex justify-center gap-1">
@@ -306,11 +289,11 @@ export default function Checkout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-4xl mx-auto space-y-5">
+    <div className="min-h-screen bg-gray-50 py-5 sm:py-8 px-3 sm:px-4 lg:px-8">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-5">
 
         <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-black text-gray-900 flex items-center gap-2 flex-wrap">
             Checkout
             {isBuyNow && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
@@ -322,22 +305,22 @@ export default function Checkout() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium">
-            <AlertCircle size={15} /> {error}
+          <div className="flex items-start sm:items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium">
+            <AlertCircle size={15} className="shrink-0 mt-0.5 sm:mt-0" /> <span>{error}</span>
           </div>
         )}
 
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid md:grid-cols-3 gap-4 sm:gap-5">
           <div className="md:col-span-2 space-y-4">
 
             {/* ── Delivery Address ── */}
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-                <MapPin size={16} className="text-blue-600" />
+              <div className="flex items-center gap-2 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-gray-100">
+                <MapPin size={16} className="text-blue-600 shrink-0" />
                 <h2 className="text-sm font-black text-gray-900">Delivery Address</h2>
               </div>
 
-              <div className="p-5 space-y-3">
+              <div className="p-4 sm:p-5 space-y-3">
 
                 {/* Saved addresses */}
                 {hasAddresses && !showNewForm && (
@@ -346,7 +329,7 @@ export default function Checkout() {
                       <div
                         key={addr._id}
                         onClick={() => setSelectedAddressId(addr._id)}
-                        className={`flex items-start gap-3 p-4 border-2 rounded-xl cursor-pointer transition-all duration-150
+                        className={`flex items-start gap-3 p-3.5 sm:p-4 border-2 rounded-xl cursor-pointer transition-all duration-150
                           ${selectedAddressId === addr._id
                             ? "border-blue-500 bg-blue-50"
                             : "border-gray-200 hover:border-gray-300 bg-white"}`}
@@ -368,9 +351,9 @@ export default function Checkout() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">{addr.fullAddress}</p>
+                          <p className="text-xs text-gray-600 mt-0.5 leading-relaxed break-words">{addr.fullAddress}</p>
                           <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                            <Phone size={11} /> {addr.phone}
+                            <Phone size={11} className="shrink-0" /> {addr.phone}
                           </p>
                         </div>
                       </div>
@@ -380,7 +363,7 @@ export default function Checkout() {
                     {addresses.length < 5 && (
                       <button
                         onClick={() => { setShowNewForm(true); setNewAddress(EMPTY_NEW); }}
-                        className="w-full flex items-center gap-2 p-4 border-2 border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 rounded-xl transition-all text-sm font-semibold"
+                        className="w-full flex items-center gap-2 p-3.5 sm:p-4 border-2 border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 rounded-xl transition-all text-sm font-semibold"
                       >
                         <Plus size={15} /> Use a different address
                       </button>
@@ -469,30 +452,28 @@ export default function Checkout() {
               </div>
             </div>
 
-            {/* ── Payment Method ── */}
+            {/* ── Payment ── */}
+            {/* Single online-payment path — no method selector since there's no
+                longer a choice to make. Shown as an info card instead of a
+                fake radio-button list of one. */}
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-                <Banknote size={16} className="text-blue-600" />
-                <h2 className="text-sm font-black text-gray-900">Payment Method</h2>
+              <div className="flex items-center gap-2 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-gray-100">
+                <CreditCard size={16} className="text-blue-600 shrink-0" />
+                <h2 className="text-sm font-black text-gray-900">Payment</h2>
               </div>
-              <div className="p-5 space-y-3">
-                {PAYMENT_METHODS.map(method => (
-                  <div key={method.id} onClick={() => setPaymentMethod(method.id)}
-                    className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all duration-150
-                      ${paymentMethod === method.id ? method.selectedColor : "border-gray-200 hover:border-gray-300 bg-white"}`}>
-                    <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all
-                      ${paymentMethod === method.id ? "border-blue-500 bg-blue-500" : "border-gray-300"}`}>
-                      {paymentMethod === method.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                    </div>
-                    <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                      {method.icon}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-gray-800">{method.label}</p>
-                      <p className="text-xs text-gray-400">{method.description}</p>
-                    </div>
+              <div className="p-4 sm:p-5">
+                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 border-2 border-blue-500 bg-blue-50 rounded-xl">
+                  <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm shrink-0">
+                    <ShieldCheck size={17} className="text-blue-600" />
                   </div>
-                ))}
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-800">Secure Online Payment</p>
+                    <p className="text-xs text-gray-500">Pay via UPI, Card or Netbanking · powered by Razorpay</p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-3">
+                  Cash on Delivery is no longer available. All orders are paid online.
+                </p>
               </div>
             </div>
 
@@ -500,12 +481,12 @@ export default function Checkout() {
 
           {/* ── Order Summary ── */}
           <div>
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm sticky top-24">
-              <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-                <ShoppingBag size={16} className="text-blue-600" />
+            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm md:sticky md:top-24">
+              <div className="flex items-center gap-2 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-gray-100">
+                <ShoppingBag size={16} className="text-blue-600 shrink-0" />
                 <h2 className="text-sm font-black text-gray-900">Order Summary</h2>
               </div>
-              <div className="p-5 space-y-4">
+              <div className="p-4 sm:p-5 space-y-4">
 
                 <div className="space-y-3 max-h-48 overflow-y-auto">
                   {orderItems.map((item) => (
@@ -546,20 +527,17 @@ export default function Checkout() {
                 {!showNewForm && selectedAddress && (
                   <div className="bg-gray-50 rounded-xl px-3 py-2.5 space-y-0.5">
                     <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                      <MapPin size={11} className="text-blue-500" /> Delivering to
+                      <MapPin size={11} className="text-blue-500 shrink-0" /> Delivering to
                     </p>
-                    <p className="text-xs text-gray-600">{selectedAddress.name} · {selectedAddress.phone}</p>
-                    <p className="text-xs text-gray-400 leading-relaxed">{selectedAddress.fullAddress}</p>
+                    <p className="text-xs text-gray-600 break-words">{selectedAddress.name} · {selectedAddress.phone}</p>
+                    <p className="text-xs text-gray-400 leading-relaxed break-words">{selectedAddress.fullAddress}</p>
                   </div>
                 )}
 
                 <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
-                  <Tag size={12} className="text-gray-400" />
+                  <Tag size={12} className="text-gray-400 shrink-0" />
                   <span className="text-xs text-gray-500">
-                    Paying via{" "}
-                    <span className="font-bold text-gray-700">
-                      {paymentMethod === "cod" ? "Cash on Delivery" : "Online Payment"}
-                    </span>
+                    Paying via <span className="font-bold text-gray-700">Online Payment</span>
                   </span>
                 </div>
 
@@ -569,9 +547,8 @@ export default function Checkout() {
                   className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed text-white py-3 rounded-xl font-semibold text-sm shadow-md shadow-blue-200 transition-all duration-200"
                 >
                   {placing
-                    ? <><Loader2 size={16} className="animate-spin" />
-                        {paymentMethod === "cod" ? "Placing Order..." : "Opening Payment..."}</>
-                    : <><CheckCircle size={16} /> Place Order</>
+                    ? <><Loader2 size={16} className="animate-spin" /> Opening Payment...</>
+                    : <><CheckCircle size={16} /> Pay Now</>
                   }
                 </button>
 

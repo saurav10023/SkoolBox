@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
+
 /* ---------------- REVENUE OVER TIME (daily / weekly / monthly) ---------------- */
 const getRevenueOverTime = asyncHandler(async (req, res) => {
   const { period = "daily", startDate, endDate } = req.query;
@@ -292,6 +293,81 @@ const getOrdersByCustomer = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, ordersByCustomer, "Orders by customer fetched successfully"));
 });
 
+/* ---------------- PENDING / ACTIVE ORDERS — single source of truth ----------------
+   Order has NO separate refundStatus field — refund state lives inside the
+   paymentStatus enum itself ("refund_initiated" / "refund_completed"). So this
+   uses paymentStatus only. (getOrdersGroupedAdmin's classify() should be
+   updated to match — see note below the export list.)
+
+   orderStatus | paymentStatus                              | bucket
+   ------------|--------------------------------------------|----------
+   placed/processing/shipped | any                           | active (pending)
+   delivered   | paid                                        | completed
+   delivered   | pending / failed / refund_initiated / refund_completed | active (COD/awaiting settlement)
+   cancelled   | paid or refund_initiated                    | active (refund owed / in progress)
+   cancelled   | pending, failed, or refund_completed         | completed
+   <unknown/missing orderStatus> | any                        | active (fail-safe, surface it)
+*/
+async function countPendingOrders() {
+  const result = await Order.aggregate([
+    {
+      $addFields: {
+        isPending: {
+          $switch: {
+            branches: [
+              {
+                case: { $in: ["$orderStatus", ["placed", "processing", "shipped"]] },
+                then: true,
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: ["$orderStatus", "delivered"] },
+                    { $eq: ["$paymentStatus", "paid"] },
+                  ],
+                },
+                then: false,
+              },
+              {
+                case: { $eq: ["$orderStatus", "delivered"] },
+                then: true,
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: ["$orderStatus", "cancelled"] },
+                    { $in: ["$paymentStatus", ["paid", "refund_initiated"]] },
+                  ],
+                },
+                then: true,
+              },
+              {
+                case: { $eq: ["$orderStatus", "cancelled"] },
+                then: false,
+              },
+            ],
+            default: true, // unknown/missing orderStatus — fail-safe, surface it
+          },
+        },
+      },
+    },
+    { $match: { isPending: true } },
+    { $count: "count" },
+  ]);
+
+  return result[0]?.count || 0;
+}
+
+/* ---------------- GET TOTAL PENDING ORDERS ---------------- */
+const getTotalPendingOrders = asyncHandler(async (req, res) => {
+  const count = await countPendingOrders();
+
+  return res.status(200).json(
+    new ApiResponse(200, count, "Pending orders fetched successfully")
+  );
+});
+
+/* ---------------- GET OVERVIEW STATS ---------------- */
 const getOverviewStats = asyncHandler(async (req, res) => {
   const [
     totalOrders,
@@ -308,7 +384,7 @@ const getOverviewStats = asyncHandler(async (req, res) => {
       { $match: { paymentStatus: "paid" } },
       { $group: { _id: null, total: { $sum: "$totalAmount" } } },
     ]),
-    Order.countDocuments({ orderStatus: "pending" }),
+    countPendingOrders(),
     Order.countDocuments({ orderStatus: "cancelled" }),
   ]);
 
@@ -333,5 +409,6 @@ export {
   getSizeWiseDemand,
   getStockOutRisk,
   getOrdersByCustomer,
+  getTotalPendingOrders,
   getOverviewStats
 };

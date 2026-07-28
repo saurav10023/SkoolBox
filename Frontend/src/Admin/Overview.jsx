@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ShoppingBag, Package, Users, TrendingUp, Clock, Ban,
-  IndianRupee, Wallet, Smartphone, AlertTriangle, Crown, ChevronRight,
+  ShoppingBag, Package, Users, TrendingUp, TrendingDown, Clock, Ban,
+  IndianRupee, Wallet, AlertTriangle, Crown, ChevronRight,
   RefreshCw,
 } from "lucide-react";
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import API from "../api/axios";
 
@@ -28,7 +28,6 @@ async function loadDashboardData() {
     overviewStats,
     revenueOverTime,
     revenueByCategory,
-    paymentSplit,
     sizeDemand,
     stockRisk,
     topCustomers,
@@ -36,7 +35,6 @@ async function loadDashboardData() {
     fetchJSON("/overview-stats"),
     fetchJSON("/revenue-over-time", { period: "daily" }),
     fetchJSON("/revenue-by-category"),
-    fetchJSON("/payment-split"),
     fetchJSON("/size-demand"),
     fetchJSON("/stock-out-risk"),
     fetchJSON("/orders-by-customer"),
@@ -44,7 +42,7 @@ async function loadDashboardData() {
 
   return {
     stats: overviewStats,
-    analytics: { revenueOverTime, revenueByCategory, paymentSplit, sizeDemand, stockRisk, topCustomers },
+    analytics: { revenueOverTime, revenueByCategory, sizeDemand, stockRisk, topCustomers },
   };
 }
 
@@ -71,11 +69,6 @@ function generateDemoData() {
     { category: "socks", revenue: 182400, unitsSold: 2210 },
     { category: "bags", revenue: 146200, unitsSold: 640 },
     { category: "stationery", revenue: 68300, unitsSold: 1890 },
-  ];
-
-  const paymentSplit = [
-    { paymentMethod: "cod", orderCount: 320, totalAmount: 168000 },
-    { paymentMethod: "online", orderCount: 540, totalAmount: 228900 },
   ];
 
   const sizeDemand = [
@@ -114,7 +107,7 @@ function generateDemoData() {
       pendingOrders: 23,
       cancelledOrders: 11,
     },
-    analytics: { revenueOverTime, revenueByCategory, paymentSplit, sizeDemand, stockRisk, topCustomers },
+    analytics: { revenueOverTime, revenueByCategory, sizeDemand, stockRisk, topCustomers },
   };
 }
 
@@ -159,23 +152,32 @@ const Sparkline = ({ values, stroke }) => {
 };
 
 /* ─────────────────────────────────────────────
+   SECTION HEADING — small reusable label used
+   above card groups on the Analytics tab
+───────────────────────────────────────────── */
+const SectionLabel = ({ children }) => (
+  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">{children}</p>
+);
+
+/* ─────────────────────────────────────────────
    SKELETON — shown while data is loading
 ───────────────────────────────────────────── */
 const Skeleton = ({ className = "" }) => (
-  <div className={`animate-pulse bg-gray-100 rounded-xl ${className}`} />
+  <div className={`animate-pulse bg-gray-100 rounded-2xl ${className}`} />
 );
 
 const DashboardSkeleton = () => (
-  <div className="space-y-4">
-    <Skeleton className="h-16 w-full rounded-2xl" />
+  <div className="space-y-5">
+    <Skeleton className="h-16 w-full" />
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
       {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-28 rounded-2xl" />
+        <Skeleton key={i} className="h-28" />
       ))}
     </div>
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-      <Skeleton className="h-64 rounded-2xl lg:col-span-2" />
-      <Skeleton className="h-64 rounded-2xl" />
+    <Skeleton className="h-72" />
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+      <Skeleton className="h-64" />
+      <Skeleton className="h-64" />
     </div>
   </div>
 );
@@ -192,7 +194,7 @@ const StockAlertStrip = ({ stockRisk = [], onViewAll }) => {
   return (
     <button
       onClick={onViewAll}
-      className="w-full text-left bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center justify-between gap-3 hover:bg-red-100/70 transition-colors"
+      className="w-full text-left bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center justify-between gap-3 hover:bg-red-100/70 hover:border-red-200 transition-all"
     >
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-9 h-9 shrink-0 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
@@ -218,23 +220,23 @@ const Overview = ({ stats = {}, revenueOverTime = [], stockRisk = [], onViewStoc
   const revenueTrend = revenueOverTime.map((d) => d.revenue);
 
   const cards = [
-    { label: "Total Orders",   value: stats.totalOrders,                icon: ShoppingBag, color: "bg-blue-50 text-blue-600",     stroke: "#2563EB", trend: orderTrend },
-    { label: "Total Products", value: stats.totalProducts,              icon: Package,     color: "bg-purple-50 text-purple-600" },
-    { label: "Total Users",    value: stats.totalUsers,                 icon: Users,       color: "bg-green-50 text-green-600" },
-    { label: "Revenue",        value: formatINR(stats.totalRevenue),    icon: TrendingUp,  color: "bg-orange-50 text-orange-600", stroke: "#F97316", trend: revenueTrend },
-    { label: "Pending Orders", value: stats.pendingOrders,              icon: Clock,       color: "bg-yellow-50 text-yellow-600" },
-    { label: "Cancelled",      value: stats.cancelledOrders,            icon: Ban,         color: "bg-red-50 text-red-600" },
+    { label: "Total Orders",   value: stats.totalOrders,             icon: ShoppingBag, color: "bg-blue-50 text-blue-600",     stroke: "#2563EB", trend: orderTrend },
+    { label: "Total Products", value: stats.totalProducts,           icon: Package,     color: "bg-purple-50 text-purple-600" },
+    { label: "Total Users",    value: stats.totalUsers,              icon: Users,       color: "bg-green-50 text-green-600" },
+    { label: "Revenue",        value: formatINR(stats.totalRevenue), icon: TrendingUp,  color: "bg-orange-50 text-orange-600", stroke: "#F97316", trend: revenueTrend },
+    { label: "Pending Orders", value: stats.pendingOrders,           icon: Clock,       color: "bg-yellow-50 text-yellow-600" },
+    { label: "Cancelled",      value: stats.cancelledOrders,         icon: Ban,         color: "bg-red-50 text-red-600" },
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-5">
       <StockAlertStrip stockRisk={stockRisk} onViewAll={onViewStockRisk} />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
         {cards.map(({ label, value, icon: Icon, color, stroke, trend }) => (
           <div
             key={label}
-            className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between min-h-[112px]"
+            className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between min-h-[112px]"
           >
             <div className="flex items-start justify-between gap-2">
               <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
@@ -243,7 +245,7 @@ const Overview = ({ stats = {}, revenueOverTime = [], stockRisk = [], onViewStoc
               {trend && trend.length > 1 && <Sparkline values={trend} stroke={stroke} />}
             </div>
             <div className="mt-3">
-              <p className="text-xl sm:text-2xl font-black text-gray-900 leading-tight">{value ?? "—"}</p>
+              <p className="text-xl sm:text-2xl font-black text-gray-900 leading-tight tabular-nums">{value ?? "—"}</p>
               <p className="text-[11px] sm:text-xs text-gray-400 font-medium">{label}</p>
             </div>
           </div>
@@ -254,114 +256,72 @@ const Overview = ({ stats = {}, revenueOverTime = [], stockRisk = [], onViewStoc
 };
 
 /* ─────────────────────────────────────────────
-   KPI STRIP
+   REVENUE TREND — the analytics anchor card.
+   KPIs (revenue / AOV / growth) live in its
+   header instead of separate KPI tiles, since
+   they all describe the same trend line.
 ───────────────────────────────────────────── */
-const KpiStrip = ({ revenueOverTime = [], paymentSplit = [] }) => {
-  const totalRevenue = revenueOverTime.reduce((a, d) => a + d.revenue, 0);
-  const totalOrders = revenueOverTime.reduce((a, d) => a + d.orderCount, 0);
+const RevenueTrendCard = ({ data = [] }) => {
+  const totalRevenue = data.reduce((a, d) => a + d.revenue, 0);
+  const totalOrders = data.reduce((a, d) => a + d.orderCount, 0);
   const aov = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
-  const onlineShare = (() => {
-    const totalAmt = paymentSplit.reduce((a, p) => a + p.totalAmount, 0);
-    const online = paymentSplit.find((p) => p.paymentMethod === "online")?.totalAmount || 0;
-    return totalAmt ? Math.round((online / totalAmt) * 100) : 0;
-  })();
 
-  const revenueTrend = revenueOverTime.map((d) => d.revenue);
-
-  const kpis = [
-    { label: "Total Revenue",    value: formatINR(totalRevenue), icon: IndianRupee, color: "bg-orange-50 text-orange-600", stroke: "#F97316" },
-    { label: "Avg. Order Value", value: formatINR(aov),          icon: Wallet,      color: "bg-blue-50 text-blue-600",     stroke: "#2563EB" },
-    { label: "Paid Online",      value: `${onlineShare}%`,       icon: Smartphone,  color: "bg-green-50 text-green-600",   stroke: "#16A34A" },
-  ];
+  const growth = useMemo(() => {
+    if (data.length < 4) return null;
+    const half = Math.floor(data.length / 2);
+    const prior = data.slice(0, half).reduce((a, d) => a + d.revenue, 0);
+    const recent = data.slice(half).reduce((a, d) => a + d.revenue, 0);
+    if (!prior) return null;
+    return Math.round(((recent - prior) / prior) * 100);
+  }, [data]);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-      {kpis.map(({ label, value, icon: Icon, color, stroke }) => (
-        <div key={label} className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm flex items-center justify-between gap-3">
-          <div className="space-y-2">
-            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center ${color}`}>
-              <Icon size={17} />
-            </div>
-            <div>
-              <p className="text-xl sm:text-2xl font-black text-gray-900">{value}</p>
-              <p className="text-[11px] sm:text-xs text-gray-400 font-medium">{label}</p>
-            </div>
+    <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+        <div>
+          <p className="text-sm font-bold text-gray-900">Revenue trend</p>
+          <p className="text-xs text-gray-400 font-medium">Paid orders over time</p>
+        </div>
+
+        <div className="flex items-center gap-5 sm:gap-7">
+          <div>
+            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Revenue</p>
+            <p className="text-base sm:text-lg font-black text-gray-900 tabular-nums">{formatINR(totalRevenue)}</p>
           </div>
           <div className="hidden xs:block">
-            <Sparkline values={revenueTrend} stroke={stroke} />
+            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Avg. order</p>
+            <p className="text-base sm:text-lg font-black text-gray-900 tabular-nums">{formatINR(aov)}</p>
           </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────────
-   REVENUE TREND
-───────────────────────────────────────────── */
-const RevenueTrendCard = ({ data = [] }) => (
-  <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm">
-    <div className="flex items-center justify-between mb-4">
-      <div>
-        <p className="text-sm font-bold text-gray-900">Revenue trend</p>
-        <p className="text-xs text-gray-400 font-medium">Paid orders over time</p>
-      </div>
-    </div>
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ left: -20, right: 10, top: 5 }}>
-        <defs>
-          <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#F97316" stopOpacity={0.25} />
-            <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid vertical={false} stroke="#F1F5F9" />
-        <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} minTickGap={20} />
-        <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={40} />
-        <Tooltip
-          formatter={(v) => [formatINR(v), "Revenue"]}
-          contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }}
-        />
-        <Area type="monotone" dataKey="revenue" stroke="#F97316" strokeWidth={2.5} fill="url(#revFill)" />
-      </AreaChart>
-    </ResponsiveContainer>
-  </div>
-);
-
-/* ─────────────────────────────────────────────
-   PAYMENT METHOD SPLIT
-───────────────────────────────────────────── */
-const PaymentSplitCard = ({ data = [] }) => {
-  const chartData = data.map((d) => ({ name: d.paymentMethod === "cod" ? "COD" : "Online", value: d.totalAmount }));
-  const colors = { COD: "#F59E0B", Online: "#2563EB" };
-  const total = chartData.reduce((a, d) => a + d.value, 0) || 1;
-
-  return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm">
-      <p className="text-sm font-bold text-gray-900 mb-1">Payment split</p>
-      <p className="text-xs text-gray-400 font-medium mb-4">COD vs. online, by revenue</p>
-      <div className="flex items-center gap-6">
-        <ResponsiveContainer width={110} height={110}>
-          <PieChart>
-            <Pie data={chartData} dataKey="value" nameKey="name" innerRadius={34} outerRadius={52} paddingAngle={3} strokeWidth={0}>
-              {chartData.map((d) => (
-                <Cell key={d.name} fill={colors[d.name]} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="space-y-3 flex-1 min-w-0">
-          {chartData.map((d) => (
-            <div key={d.name} className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2 text-gray-600 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[d.name] }} />
-                {d.name}
-              </span>
-              <span className="font-bold text-gray-900">{Math.round((d.value / total) * 100)}%</span>
+          {growth !== null && (
+            <div>
+              <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Trend</p>
+              <p className={`flex items-center gap-1 text-base sm:text-lg font-black tabular-nums ${growth >= 0 ? "text-green-600" : "text-red-500"}`}>
+                {growth >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                {Math.abs(growth)}%
+              </p>
             </div>
-          ))}
+          )}
         </div>
       </div>
+
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={data} margin={{ left: -20, right: 10, top: 5 }}>
+          <defs>
+            <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#F97316" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke="#F1F5F9" />
+          <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} minTickGap={20} />
+          <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={40} />
+          <Tooltip
+            formatter={(v) => [formatINR(v), "Revenue"]}
+            contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }}
+          />
+          <Area type="monotone" dataKey="revenue" stroke="#F97316" strokeWidth={2.5} fill="url(#revFill)" />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   );
 };
@@ -527,31 +487,29 @@ const Analytics = ({ analytics = {} }) => {
   const {
     revenueOverTime = [],
     revenueByCategory = [],
-    paymentSplit = [],
     sizeDemand = [],
     stockRisk = [],
     topCustomers = [],
   } = analytics;
 
   return (
-    <div className="space-y-4">
-      <KpiStrip revenueOverTime={revenueOverTime} paymentSplit={paymentSplit} />
+    <div className="space-y-5 sm:space-y-6">
+      <RevenueTrendCard data={revenueOverTime} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-        <div className="lg:col-span-2">
-          <RevenueTrendCard data={revenueOverTime} />
+      <div>
+        <SectionLabel>Catalog performance</SectionLabel>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+          <CategoryRevenueCard data={revenueByCategory} />
+          <SizeDemandCard data={sizeDemand} />
         </div>
-        <PaymentSplitCard data={paymentSplit} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-        <CategoryRevenueCard data={revenueByCategory} />
-        <SizeDemandCard data={sizeDemand} />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-        <StockRiskCard data={stockRisk} />
-        <TopCustomersCard data={topCustomers} />
+      <div>
+        <SectionLabel>Fulfillment &amp; customers</SectionLabel>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+          <StockRiskCard data={stockRisk} />
+          <TopCustomersCard data={topCustomers} />
+        </div>
       </div>
     </div>
   );
@@ -602,7 +560,7 @@ const Dashboard = () => {
   return (
     <div className="max-w-5xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-lg sm:text-xl font-black text-gray-900">Dashboard</h1>
+        <h1 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight">Dashboard</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={load}
@@ -616,8 +574,8 @@ const Dashboard = () => {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`px-3.5 sm:px-4 py-1.5 rounded-full text-sm font-semibold transition-colors flex items-center gap-1 ${
-                  tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+                className={`px-3.5 sm:px-4 py-1.5 rounded-full text-sm font-semibold transition-colors flex items-center gap-1.5 ${
+                  tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
                 }`}
               >
                 {t.label}

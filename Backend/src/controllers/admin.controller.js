@@ -41,17 +41,32 @@ const registerAdmin = asyncHandler(async (req, res) => {
   );
 });
 
-const getTotalPendingOrders = asyncHandler(async (req , res)=>{
+/* ---------------- GET TOTAL PENDING ORDERS ---------------- */
+// "Pending" = anything not yet fully resolved, matching the same
+// active/completed business rule used in getOrdersGroupedAdmin:
+//
+//   orderStatus                 | condition                        | pending?
+//   -----------------------------|----------------------------------|---------
+//   placed / processing / shipped| any payment state                | yes
+//   delivered                    | paymentStatus !== "paid"         | yes  (COD not settled yet)
+//   delivered                    | paymentStatus === "paid"         | no
+//   cancelled                    | paymentStatus in [paid,          | yes  (refund owed / in progress)
+//                                 |   refund_initiated]              |
+//   cancelled                    | paymentStatus in [pending,       | no
+//                                 |   failed, refund_completed]      |
+const getTotalPendingOrders = asyncHandler(async (req, res) => {
   const count = await Order.countDocuments({
-    orderStatus:{
-      $in: ["processing", "shipped"]
-    }
-  })
+    $or: [
+      { orderStatus: { $in: ["placed", "processing", "shipped"] } },
+      { orderStatus: "delivered", paymentStatus: { $ne: "paid" } },
+      { orderStatus: "cancelled", paymentStatus: { $in: ["paid", "refund_initiated"] } },
+    ],
+  });
 
   return res.status(200).json(
-    new ApiResponse(200 ,count ,"Pending orders fetched Successfully" )
-  )
-})
+    new ApiResponse(200, count, "Pending orders fetched successfully")
+  );
+});
 
 const getTotalOrders = asyncHandler(async (req , res)=>{
   const count = await Order.countDocuments()
