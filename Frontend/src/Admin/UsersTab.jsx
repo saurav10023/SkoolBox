@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   Users, ShieldCheck, UserPlus, X, Loader2, AlertCircle,
-  Eye, EyeOff, Ban, ShieldOff, RefreshCw, Trash2,
+  Eye, EyeOff, Ban, ShieldOff, RefreshCw, Trash2, Receipt,
+  Search, SearchX,
 } from "lucide-react";
 import API from "../api/axios";
 import ConfirmModal from "./ConfirmModal ";
+import UserOrdersModal from "./UserOrdersModal";
 
 /* ─────────────────────────────────────────────
    USERS TAB
@@ -21,6 +23,9 @@ const UsersTab = ({ showToast }) => {
   const [newPassword, setNewPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
 
+  // Orders modal state
+  const [ordersModalUser, setOrdersModalUser] = useState(null);
+
   // Create user state
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -30,9 +35,49 @@ const UsersTab = ({ showToast }) => {
   });
   const [createError, setCreateError] = useState("");
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState(null); // null = not searching
+  const [searching, setSearching] = useState(false);
+  const [searchTotal, setSearchTotal] = useState(0);
+
   const isMobileValid = /^[0-9]{10}$/.test(createData.mobileNumber);
+  const isSearching = searchQuery.trim().length > 0;
 
   useEffect(() => { fetchAll(); }, []);
+
+  // Debounced search — refires when query or role tab changes
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await API.get("/api/v1/admin/usersearch", {
+          params: {
+            query: trimmed,
+            role: view === "users" ? "user" : "admin",
+            limit: 30,
+          },
+        });
+        setSearchResults(res.data.data.users || []);
+        setSearchTotal(res.data.data.pagination?.total ?? 0);
+      } catch {
+        showToast("Search failed", "error");
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, view]);
 
   const fetchAll = async () => {
     try {
@@ -49,6 +94,7 @@ const UsersTab = ({ showToast }) => {
   const updateBoth = (userId, patch) => {
     setRegularUsers(prev => prev.map(u => u._id === userId ? { ...u, ...patch } : u));
     setAdmins(prev => prev.map(u => u._id === userId ? { ...u, ...patch } : u));
+    setSearchResults(prev => prev ? prev.map(u => u._id === userId ? { ...u, ...patch } : u) : prev);
   };
 
   const handleToggleBlock = async (userId) => {
@@ -66,7 +112,11 @@ const UsersTab = ({ showToast }) => {
     try {
       const res = await API.patch(`/api/v1/users/admin/users/${userId}/toggle-admin`);
       const newRole = res.data.data.role;
-      if (newRole === "admin") {
+
+      if (searchResults) {
+        // In search mode: keep the item in place, just flip its role badge
+        setSearchResults(prev => prev.map(u => u._id === userId ? { ...u, role: newRole } : u));
+      } else if (newRole === "admin") {
         setRegularUsers(prev => {
           const user = prev.find(u => u._id === userId);
           if (user) setAdmins(a => [{ ...user, role: "admin" }, ...a]);
@@ -79,6 +129,7 @@ const UsersTab = ({ showToast }) => {
           return prev.filter(u => u._id !== userId);
         });
       }
+
       showToast(
         `User ${newRole === "admin" ? "promoted to admin" : "demoted to user"}`,
         "success"
@@ -93,6 +144,7 @@ const UsersTab = ({ showToast }) => {
       await API.delete(`/api/v1/users/admin/users/${userId}`);
       setRegularUsers(prev => prev.filter(u => u._id !== userId));
       setAdmins(prev => prev.filter(u => u._id !== userId));
+      setSearchResults(prev => prev ? prev.filter(u => u._id !== userId) : prev);
       showToast("User deleted", "success");
     } catch { showToast("Failed to delete user", "error"); }
     finally { setConfirm(null); }
@@ -129,7 +181,6 @@ const UsersTab = ({ showToast }) => {
       const res = await API.post("/api/v1/users/admin/create-user", createData);
       const newUser = res.data.data;
 
-      // Add to the right list
       if (newUser.role === "admin") {
         setAdmins(prev => [newUser, ...prev]);
       } else {
@@ -139,8 +190,6 @@ const UsersTab = ({ showToast }) => {
       showToast("User created successfully", "success");
       setShowCreateForm(false);
       setCreateData({ username: "", password: "", mobileNumber: "", email: "", role: "user" });
-
-      // Switch to the relevant tab
       setView(newUser.role === "admin" ? "admins" : "users");
     } catch (err) {
       setCreateError(err.response?.data?.message || "Failed to create user");
@@ -152,15 +201,15 @@ const UsersTab = ({ showToast }) => {
   const UserCard = ({ user }) => (
     <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <img src={user.avatar} alt="" className="w-10 h-10 rounded-xl object-cover border border-gray-100" />
-          <div>
-            <p className="text-sm font-bold text-gray-900 capitalize">{user.username}</p>
-            <p className="text-xs text-gray-400">{user.mobileNumber} · {user.email || "No email"}</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <img src={user.avatar} alt="" className="w-10 h-10 rounded-xl object-cover border border-gray-100 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 capitalize truncate">{user.username}</p>
+            <p className="text-xs text-gray-400 truncate">{user.mobileNumber} · {user.email || "No email"}</p>
             <p className="text-xs text-gray-400">Joined {new Date(user.createdAt).toLocaleDateString("en-IN")}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
             ${user.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-500"}`}>
             {user.role === "admin" ? "Admin" : "User"}
@@ -173,6 +222,13 @@ const UsersTab = ({ showToast }) => {
       </div>
 
       <div className="flex gap-2 mt-3 flex-wrap">
+        <button
+          onClick={() => setOrdersModalUser(user)}
+          className="flex items-center gap-1 text-xs px-3 py-1.5 border border-teal-200 text-teal-600 rounded-lg hover:bg-teal-50 transition-all font-medium"
+        >
+          <Receipt size={11} /> View Orders
+        </button>
+
         <button
           onClick={() => handleToggleBlock(user._id)}
           disabled={actionId === user._id}
@@ -223,6 +279,7 @@ const UsersTab = ({ showToast }) => {
   );
 
   const currentList = view === "users" ? regularUsers : admins;
+  const displayList = isSearching ? (searchResults || []) : currentList;
 
   return (
     <div className="space-y-4">
@@ -256,7 +313,6 @@ const UsersTab = ({ showToast }) => {
           </button>
         </div>
 
-        {/* Create User button */}
         <button
           onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(""); }}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all
@@ -266,6 +322,41 @@ const UsersTab = ({ showToast }) => {
         >
           {showCreateForm ? <><X size={14} /> Cancel</> : <><UserPlus size={14} /> Create User</>}
         </button>
+      </div>
+
+      {/* ── Search Bar ── */}
+      <div className="relative group">
+        <div
+          className={`flex items-center gap-2 bg-white border rounded-2xl px-4 py-3 shadow-sm transition-all
+            ${isSearching ? "border-blue-300 ring-2 ring-blue-100" : "border-gray-100 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100"}`}
+        >
+          {searching
+            ? <Loader2 size={16} className="text-blue-500 animate-spin shrink-0" />
+            : <Search size={16} className="text-gray-400 shrink-0" />}
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={`Search ${view === "users" ? "users" : "admins"} by name, email, or mobile number...`}
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400 min-w-0"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="text-gray-300 hover:text-gray-500 transition-colors shrink-0"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {isSearching && !searching && (
+          <p className="text-xs text-gray-400 mt-2 pl-1">
+            {searchTotal === 0
+              ? "No matches found"
+              : `${searchTotal} match${searchTotal === 1 ? "" : "es"} found`}
+          </p>
+        )}
       </div>
 
       {/* ── Create User Form ── */}
@@ -288,7 +379,6 @@ const UsersTab = ({ showToast }) => {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Username */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-600">
                 Username <span className="text-red-400">*</span>
@@ -302,7 +392,6 @@ const UsersTab = ({ showToast }) => {
               />
             </div>
 
-            {/* Mobile */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-600">
                 Mobile Number <span className="text-red-400">*</span>
@@ -325,7 +414,6 @@ const UsersTab = ({ showToast }) => {
               )}
             </div>
 
-            {/* Password */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-600">
                 Password <span className="text-red-400">*</span>
@@ -353,7 +441,6 @@ const UsersTab = ({ showToast }) => {
               )}
             </div>
 
-            {/* Email */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-600">Email
                 <span className="text-gray-400 font-normal ml-1">(optional)</span>
@@ -368,7 +455,6 @@ const UsersTab = ({ showToast }) => {
             </div>
           </div>
 
-          {/* Role selector */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-gray-600">Role</label>
             <div className="flex gap-3">
@@ -391,7 +477,6 @@ const UsersTab = ({ showToast }) => {
             </div>
           </div>
 
-          {/* Submit */}
           <button
             onClick={handleCreateUser}
             disabled={creating}
@@ -406,16 +491,22 @@ const UsersTab = ({ showToast }) => {
 
       {/* List */}
       <div className="space-y-3">
-        {currentList.length === 0 ? (
+        {isSearching && searching ? (
+          [1, 2].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)
+        ) : displayList.length === 0 ? (
           <div className="flex flex-col items-center py-16 gap-2 bg-white border border-gray-100 rounded-2xl">
-            {view === "admins"
-              ? <ShieldCheck size={28} className="text-gray-200" />
-              : <Users size={28} className="text-gray-200" />}
+            {isSearching
+              ? <SearchX size={28} className="text-gray-200" />
+              : view === "admins"
+                ? <ShieldCheck size={28} className="text-gray-200" />
+                : <Users size={28} className="text-gray-200" />}
             <p className="text-gray-400 text-sm">
-              {view === "admins" ? "No admins yet" : "No users yet"}
+              {isSearching
+                ? "No matches for your search"
+                : view === "admins" ? "No admins yet" : "No users yet"}
             </p>
           </div>
-        ) : currentList.map(user => (
+        ) : displayList.map(user => (
           <UserCard key={user._id} user={user} />
         ))}
       </div>
@@ -456,6 +547,14 @@ const UsersTab = ({ showToast }) => {
           message="Delete this user permanently?"
           onConfirm={() => handleDelete(confirm)}
           onCancel={() => setConfirm(null)}
+        />
+      )}
+
+      {/* User Orders Modal */}
+      {ordersModalUser && (
+        <UserOrdersModal
+          user={ordersModalUser}
+          onClose={() => setOrdersModalUser(null)}
         />
       )}
     </div>

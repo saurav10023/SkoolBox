@@ -17,6 +17,7 @@ import {
 
 import { verifyjwt } from "../middlewares/auth.middleware.js";
 import { verifyAdmin } from "../middlewares/authAdmin.middleware.js";
+import { searchOrders } from "../controllers/admin.controller.js";
 
 const router = express.Router();
 
@@ -24,6 +25,7 @@ const router = express.Router();
    ADMIN ROUTES
 ========================= */
 
+router.get("/admin/search", verifyjwt, verifyAdmin, searchOrders);
 // Create order as admin
 router.post(
   "/admin/create",
