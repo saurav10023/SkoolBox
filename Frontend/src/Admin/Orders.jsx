@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle, Clock, Loader2, ShoppingBag, UserCog,
   Phone, MapPin, CalendarDays, Package, IndianRupee, Trash2, Pencil, X,
@@ -24,6 +24,11 @@ const isOrderSettled = (order) => {
   }
   return false;
 };
+
+// First available product image across an order's line items — used for the
+// live search suggestion thumbnail and the item chips in the expanded card.
+const firstOrderImage = (order) =>
+  order.orderItems?.find((it) => it.product?.images?.[0])?.product?.images?.[0] || null;
 
 /* Small pill used in the collapsed row — compact version of the full badges */
 const Pill = ({ children, className }) => (
@@ -66,6 +71,11 @@ const Orders = ({ showToast }) => {
   const [searchPage, setSearchPage] = useState(1);
   const [searchTotalPages, setSearchTotalPages] = useState(1);
 
+  // ── Live suggestion dropdown (mirrors the navbar's search-as-you-type UI) ──
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [justPicked, setJustPicked] = useState(null); // brief highlight pulse after picking a suggestion
+  const searchBoxRef = useRef(null);
+
   const activeFilterCount = [statusFilter, paymentFilter, startDate, endDate].filter(Boolean).length;
   const isSearchMode = searchQuery.trim().length > 0 || activeFilterCount > 0;
 
@@ -86,6 +96,7 @@ const Orders = ({ showToast }) => {
     if (!isSearchMode) {
       setSearchResults([]);
       setSearching(false);
+      setSuggestOpen(false);
       return;
     }
     setSearching(true);
@@ -93,6 +104,17 @@ const Orders = ({ showToast }) => {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, statusFilter, paymentFilter, startDate, endDate, searchPage]);
+
+  // Close the suggestion dropdown on outside click — same pattern as the navbar
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
+        setSuggestOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchOrders = async () => {
     try {
@@ -132,7 +154,19 @@ const Orders = ({ showToast }) => {
     setStatusFilter(""); setPaymentFilter(""); setStartDate(""); setEndDate("");
     setSearchPage(1);
   };
-  const clearSearch = () => { setSearchQuery(""); clearFilters(); };
+  const clearSearch = () => { setSearchQuery(""); clearFilters(); setSuggestOpen(false); };
+
+  // Jump from a suggestion straight to the matching card: make sure it's
+  // expanded, briefly highlight it, and scroll it into view.
+  const jumpToOrder = (orderId) => {
+    setSuggestOpen(false);
+    setExpandedIds((prev) => new Set(prev).add(orderId));
+    setJustPicked(orderId);
+    requestAnimationFrame(() => {
+      document.getElementById(`order-${orderId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    setTimeout(() => setJustPicked((cur) => (cur === orderId ? null : cur)), 1600);
+  };
 
   const toggleEditing = (orderId) => {
     setEditingIds(prev => {
@@ -252,7 +286,7 @@ const Orders = ({ showToast }) => {
   /* ─────────────────────────────────────────────
      ORDER CARD — collapsed summary + expandable detail
   ───────────────────────────────────────────── */
-  const OrderCard = ({ order, editable, isEditing, onToggleEdit, isExpanded, onToggleExpand }) => {
+  const OrderCard = ({ order, editable, isEditing, onToggleEdit, isExpanded, onToggleExpand, highlighted }) => {
     const isManual = !!order.createdByAdmin;
     const customerName = order.user?.username || order.customerName || "Unknown";
     const customerPhone = order.user?.mobileNumber || order.phoneNumber || "—";
@@ -260,20 +294,31 @@ const Orders = ({ showToast }) => {
       && order.paymentStatus !== "refund_initiated";
     const showControls = editable || isEditing;
     const shortDate = new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+    const thumb = firstOrderImage(order);
 
     return (
-      <div className={`bg-white border rounded-2xl shadow-sm overflow-hidden transition-colors
+      <div
+        id={`order-${order._id}`}
+        className={`bg-white border rounded-2xl shadow-sm overflow-hidden transition-all duration-500 h-fit
         ${isExpanded ? "border-gray-200" : "border-gray-100"}
-        ${isEditing ? "ring-2 ring-amber-200 border-amber-300" : ""}`}>
+        ${isEditing ? "ring-2 ring-amber-200 border-amber-300" : ""}
+        ${highlighted ? "ring-2 ring-blue-400 shadow-lg" : ""}`}
+      >
 
         {/* ── Collapsed summary row — always visible, tap to expand ── */}
         <button
           onClick={onToggleExpand}
           className="w-full flex items-center gap-3 p-3.5 text-left active:bg-gray-50 transition-colors"
         >
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0
-            ${isManual ? "bg-purple-50 text-purple-500" : "bg-blue-50 text-blue-500"}`}>
-            {isManual ? <UserCog size={17} /> : <ShoppingBag size={17} />}
+          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-gray-100">
+            {thumb ? (
+              <img src={thumb} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className={`w-full h-full flex items-center justify-center
+                ${isManual ? "bg-purple-50 text-purple-500" : "bg-blue-50 text-blue-500"}`}>
+                {isManual ? <UserCog size={17} /> : <ShoppingBag size={17} />}
+              </div>
+            )}
           </div>
 
           <div className="min-w-0 flex-1">
@@ -363,12 +408,18 @@ const Orders = ({ showToast }) => {
                 )}
               </div>
 
-              {/* Items */}
+              {/* Items — now with product thumbnails */}
               {order.orderItems?.length > 0 && (
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-50">
                   {order.orderItems.map((item, i) => (
-                    <span key={i} className="flex items-center gap-1 text-xs bg-gray-50 border border-gray-100 text-gray-600 px-2 py-1 rounded-lg">
-                      <Package size={11} className="text-gray-400" />
+                    <span key={i} className="flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-100 text-gray-600 pl-1 pr-2 py-1 rounded-lg">
+                      <span className="w-5 h-5 rounded-md overflow-hidden shrink-0 bg-gray-200 flex items-center justify-center">
+                        {item.product?.images?.[0] ? (
+                          <img src={item.product.images[0]} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <Package size={10} className="text-gray-400" />
+                        )}
+                      </span>
                       {item.product?.name || "Product"} ({item.size}) × {item.quantity}
                     </span>
                   ))}
@@ -465,8 +516,8 @@ const Orders = ({ showToast }) => {
   };
 
   if (loading) return (
-    <div className="space-y-3">
-      {[1, 2, 3, 4].map(i => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      {[1, 2, 3, 4, 5, 6].map(i => (
         <div key={i} className="h-[72px] bg-gray-100 rounded-2xl animate-pulse" />
       ))}
     </div>
@@ -486,11 +537,15 @@ const Orders = ({ showToast }) => {
     customer: baseOrders.filter(o => !o.createdByAdmin).length,
   };
 
+  // Top 5 quick-preview suggestions for the live dropdown — same source as
+  // the full search results, just capped for a fast glanceable list.
+  const suggestions = searchQuery.trim() ? searchResults.slice(0, 5) : [];
+
   return (
     <div className="space-y-4 pb-4">
 
-      {/* ── Search bar ── */}
-      <div className="flex gap-2">
+      {/* ── Search bar with live image-preview suggestions ── */}
+      <div ref={searchBoxRef} className="relative flex gap-2">
         <div className="flex-1 flex items-center gap-2 bg-white border border-gray-100 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 rounded-full px-4 py-3 shadow-sm transition-all min-w-0">
           {searching
             ? <Loader2 size={16} className="text-blue-500 animate-spin shrink-0" />
@@ -498,12 +553,14 @@ const Orders = ({ showToast }) => {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setSearchPage(1); }}
-            placeholder="Search orders..."
+            onChange={(e) => { setSearchQuery(e.target.value); setSearchPage(1); setSuggestOpen(true); }}
+            onFocus={() => { if (searchQuery.trim()) setSuggestOpen(true); }}
+            onKeyDown={(e) => e.key === "Escape" && setSuggestOpen(false)}
+            placeholder="Search by customer, phone, address or product..."
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400 min-w-0"
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery("")} className="text-gray-300 hover:text-gray-500 shrink-0">
+            <button onClick={clearSearch} className="text-gray-300 hover:text-gray-500 shrink-0">
               <X size={16} />
             </button>
           )}
@@ -523,6 +580,69 @@ const Orders = ({ showToast }) => {
             </span>
           )}
         </button>
+
+        {/* Live suggestion dropdown — mirrors the navbar's product search preview */}
+        {suggestOpen && searchQuery.trim() && (
+          <div className="absolute top-full left-0 right-0 sm:right-14 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 max-h-96 overflow-y-auto z-30">
+            {searching ? (
+              <div className="flex items-center gap-2 px-3 py-4 text-sm text-gray-400">
+                <Loader2 size={15} className="animate-spin" />
+                Searching...
+              </div>
+            ) : suggestions.length > 0 ? (
+              <>
+                {suggestions.map((order) => {
+                  const thumb = firstOrderImage(order);
+                  const customerName = order.user?.username || order.customerName || "Unknown";
+                  return (
+                    <button
+                      key={order._id}
+                      onClick={() => jumpToOrder(order._id)}
+                      className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-blue-50 rounded-xl transition-colors text-left"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden shrink-0">
+                        {thumb ? (
+                          <img src={thumb} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ShoppingBag size={14} className="text-gray-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-800 truncate">
+                          #{order.orderNumber || order._id.slice(-6).toUpperCase()} · <span className="capitalize font-medium text-gray-600">{customerName}</span>
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">
+                          {order.orderItems?.[0]?.product?.name || "—"}
+                          {order.orderItems?.length > 1 ? ` +${order.orderItems.length - 1} more` : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="flex items-center text-sm font-bold text-blue-600">
+                          <IndianRupee size={11} />{order.totalAmount}
+                        </span>
+                        <Pill className={STATUS_COLORS[order.orderStatus] || "bg-gray-100 text-gray-600"}>
+                          {order.orderStatus}
+                        </Pill>
+                      </div>
+                    </button>
+                  );
+                })}
+                {searchTotal > suggestions.length && (
+                  <button
+                    onClick={() => setSuggestOpen(false)}
+                    className="w-full text-center text-xs font-semibold text-blue-600 hover:underline py-2.5 mt-1 border-t border-gray-50"
+                  >
+                    See all {searchTotal} results for "{searchQuery.trim()}"
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="px-3 py-4 text-sm text-gray-400 text-center">No orders found for "{searchQuery.trim()}"</p>
+            )}
+          </div>
+        )}
       </div>
 
       {isSearchMode && !searching && (
@@ -637,11 +757,11 @@ const Orders = ({ showToast }) => {
       {/* ── Search results mode ── */}
       {isSearchMode ? (
         <>
-          <div className="space-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
             {searching ? (
-              [1, 2, 3].map(i => <div key={i} className="h-[72px] bg-gray-100 rounded-2xl animate-pulse" />)
+              [1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-[72px] bg-gray-100 rounded-2xl animate-pulse" />)
             ) : searchResults.length === 0 ? (
-              <div className="flex flex-col items-center py-16 gap-2 bg-white border border-gray-100 rounded-2xl">
+              <div className="col-span-full flex flex-col items-center py-16 gap-2 bg-white border border-gray-100 rounded-2xl">
                 <PackageSearch size={28} className="text-gray-200" />
                 <p className="text-gray-400 text-sm">No orders match your search</p>
               </div>
@@ -656,6 +776,7 @@ const Orders = ({ showToast }) => {
                   onToggleEdit={() => toggleEditing(order._id)}
                   isExpanded={expandedIds.has(order._id)}
                   onToggleExpand={() => toggleExpanded(order._id)}
+                  highlighted={justPicked === order._id}
                 />
               );
             })}
@@ -734,10 +855,10 @@ const Orders = ({ showToast }) => {
             ))}
           </div>
 
-          {/* ── List — single column, collapsible cards ── */}
-          <div className="space-y-2.5">
+          {/* ── List — responsive grid, collapsible cards ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
             {currentOrders.length === 0 ? (
-              <div className="flex flex-col items-center py-16 gap-2 bg-white border border-gray-100 rounded-2xl">
+              <div className="col-span-full flex flex-col items-center py-16 gap-2 bg-white border border-gray-100 rounded-2xl">
                 <ShoppingBag size={28} className="text-gray-200" />
                 <p className="text-gray-400 text-sm">
                   {sourceFilter === "all"
@@ -754,6 +875,7 @@ const Orders = ({ showToast }) => {
                 onToggleEdit={() => toggleEditing(order._id)}
                 isExpanded={expandedIds.has(order._id)}
                 onToggleExpand={() => toggleExpanded(order._id)}
+                highlighted={justPicked === order._id}
               />
             ))}
           </div>

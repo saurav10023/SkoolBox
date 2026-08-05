@@ -5,7 +5,7 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { Order } from "../models/order.model.js";
 import { Product } from "../models/Product.model.js";
-
+import mongoose from "mongoose";
 // Middleware: verifyjwt + verifyAdmin must run before this
 const registerAdmin = asyncHandler(async (req, res) => {
   const { mobileNumber, email, userName, password } = req.body;
@@ -296,6 +296,19 @@ const searchOrders = asyncHandler(async (req, res) => {
     { $unwind: { path: "$userInfo", preserveNullAndEmptyArrays: true } },
   ];
 
+  // Only join products when there's actually a text search to run against them —
+  // status/date/payment-only queries skip this extra lookup entirely.
+  if (trimmed) {
+    pipeline.push({
+      $lookup: {
+        from: "products",
+        localField: "orderItems.product",
+        foreignField: "_id",
+        as: "productInfo",
+      },
+    });
+  }
+
   const matchConditions = [];
 
   if (trimmed) {
@@ -310,6 +323,8 @@ const searchOrders = asyncHandler(async (req, res) => {
       { "userInfo.username": regex },
       { "userInfo.email": regex },
       { "userInfo.mobileNumber": regex },
+      { "productInfo.name": regex },      // search by product name
+      { "productInfo.category": regex },  // search by product category
     ];
     if (/^\d+$/.test(trimmed)) {
       orConditions.push({ orderNumber: Number(trimmed) });
@@ -384,4 +399,42 @@ const searchOrders = asyncHandler(async (req, res) => {
   );
 });
 
-export{registerAdmin , getTotalOrders , getTotalPendingOrders , getTotalProducts , getTotalUsers,getTotalRevenue , getUserOrdersByAdmin, searchUsers , searchOrders}
+
+
+const getProductSelloutTrack = asyncHandler(async (req, res) => {
+  const { productId } = req.params;
+
+  if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+    throw new ApiError(400, "A valid productId is required");
+  }
+
+  const productObjectId = new mongoose.Types.ObjectId(productId);
+
+  const buyers = await Order.aggregate([
+    { $match: { "orderItems.product": productObjectId } },
+    { $unwind: "$orderItems" },
+    { $match: { "orderItems.product": productObjectId } },
+    { $sort: { createdAt: -1 } },
+    {
+      $project: {
+        _id: 0,
+        orderId: "$_id",
+        orderNumber: 1,
+        customerName: 1,
+        phoneNumber: 1,
+        email: 1,
+        size: "$orderItems.size",
+        quantity: "$orderItems.quantity",
+        price: "$orderItems.price",
+        orderStatus: 1,
+        paymentStatus: 1,
+        purchasedAt: "$createdAt",
+      },
+    },
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(200, buyers, buyers.length ? "Product sellout track fetched successfully" : "No purchases found for this product")
+  );
+}); 
+export{registerAdmin , getTotalOrders , getTotalPendingOrders , getTotalProducts , getTotalUsers,getTotalRevenue , getUserOrdersByAdmin, searchUsers , searchOrders,getProductSelloutTrack}

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ShoppingBag, Package, Users, TrendingUp, TrendingDown, Clock, Ban,
-  IndianRupee, Wallet, AlertTriangle, Crown, ChevronRight,
-  RefreshCw,
+  AlertTriangle, Crown, ChevronRight, BarChart3, Ruler, RefreshCw,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
@@ -156,7 +155,45 @@ const Sparkline = ({ values, stroke }) => {
    above card groups on the Analytics tab
 ───────────────────────────────────────────── */
 const SectionLabel = ({ children }) => (
-  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">{children}</p>
+  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 px-1">{children}</p>
+);
+
+/* ─────────────────────────────────────────────
+   CARD HEADER — shared icon-badge + title/subtitle
+   row so every Analytics card reads the same way
+   at a glance, with an optional right-aligned slot
+   for filter chips or period labels.
+───────────────────────────────────────────── */
+const CardHeader = ({ icon: Icon, iconClass = "bg-gray-50 text-gray-500", title, subtitle, right }) => (
+  <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+    <div className="flex items-center gap-2.5 min-w-0">
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${iconClass}`}>
+        <Icon size={15} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-bold text-gray-900 truncate">{title}</p>
+        {subtitle && <p className="text-xs text-gray-500 font-medium truncate">{subtitle}</p>}
+      </div>
+    </div>
+    {right && <div className="shrink-0">{right}</div>}
+  </div>
+);
+
+/* ─────────────────────────────────────────────
+   CARD EMPTY STATE — reused across every
+   Analytics card so "no data yet" always looks
+   intentional instead of a blank/broken chart
+───────────────────────────────────────────── */
+const CardEmptyState = ({ icon: Icon = BarChart3, label = "Nothing to show yet", height = 200 }) => (
+  <div
+    className="flex flex-col items-center justify-center gap-2 text-center"
+    style={{ height }}
+  >
+    <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center">
+      <Icon size={18} className="text-gray-300" />
+    </div>
+    <p className="text-xs text-gray-400 font-medium max-w-[220px]">{label}</p>
+  </div>
 );
 
 /* ─────────────────────────────────────────────
@@ -175,7 +212,7 @@ const DashboardSkeleton = () => (
       ))}
     </div>
     <Skeleton className="h-72" />
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
       <Skeleton className="h-64" />
       <Skeleton className="h-64" />
     </div>
@@ -246,7 +283,7 @@ const Overview = ({ stats = {}, revenueOverTime = [], stockRisk = [], onViewStoc
             </div>
             <div className="mt-3">
               <p className="text-xl sm:text-2xl font-black text-gray-900 leading-tight tabular-nums">{value ?? "—"}</p>
-              <p className="text-[11px] sm:text-xs text-gray-400 font-medium">{label}</p>
+              <p className="text-[11px] sm:text-xs text-gray-500 font-medium">{label}</p>
             </div>
           </div>
         ))}
@@ -256,10 +293,79 @@ const Overview = ({ stats = {}, revenueOverTime = [], stockRisk = [], onViewStoc
 };
 
 /* ─────────────────────────────────────────────
+   ANALYTICS SUMMARY STRIP — four glanceable
+   highlights that complement (not repeat) the
+   detail cards below: what's selling best, what's
+   about to run out, and who your best customer is.
+───────────────────────────────────────────── */
+const AnalyticsSummaryStrip = ({ revenueByCategory = [], stockRisk = [], topCustomers = [] }) => {
+  const topCategory = revenueByCategory.length
+    ? [...revenueByCategory].sort((a, b) => b.revenue - a.revenue)[0]
+    : null;
+  const itemsAtRisk = stockRisk.filter((s) => s.daysUntilStockOut !== null && s.daysUntilStockOut <= 14).length;
+  const topCustomer = topCustomers[0] || null;
+  const totalUnits = revenueByCategory.reduce((a, d) => a + (d.unitsSold || 0), 0);
+
+  const items = [
+    {
+      key: "topCategory",
+      icon: Package,
+      color: "bg-indigo-50 text-indigo-600",
+      label: "Top category",
+      value: topCategory ? topCategory.category : "—",
+      sub: topCategory ? formatINR(topCategory.revenue) : "No sales yet",
+      capitalize: true,
+    },
+    {
+      key: "itemsAtRisk",
+      icon: AlertTriangle,
+      color: itemsAtRisk > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-400",
+      label: "Items at risk",
+      value: itemsAtRisk,
+      sub: itemsAtRisk > 0 ? "Selling out within 14 days" : "Stock looks healthy",
+    },
+    {
+      key: "topCustomer",
+      icon: Crown,
+      color: "bg-amber-50 text-amber-600",
+      label: "Top customer",
+      value: topCustomer ? topCustomer.username : "—",
+      sub: topCustomer ? `${topCustomer.orderCount} orders` : "No repeat buyers yet",
+      capitalize: true,
+    },
+    {
+      key: "totalUnits",
+      icon: TrendingUp,
+      color: "bg-green-50 text-green-600",
+      label: "Units sold",
+      value: totalUnits || "—",
+      sub: "Across all categories",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      {items.map(({ key, icon: Icon, color, label, value, sub, capitalize }) => (
+        <div key={key} className="bg-white border border-gray-100 rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2.5 ${color}`}>
+            <Icon size={15} />
+          </div>
+          <p className={`text-sm sm:text-base font-black text-gray-900 truncate ${capitalize ? "capitalize" : "tabular-nums"}`}>
+            {value}
+          </p>
+          <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mt-0.5">{label}</p>
+          <p className="text-xs text-gray-400 font-medium truncate mt-0.5">{sub}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────
    REVENUE TREND — the analytics anchor card.
-   KPIs (revenue / AOV / growth) live in its
-   header instead of separate KPI tiles, since
-   they all describe the same trend line.
+   KPIs (revenue / AOV / growth) sit in a steady
+   3-column grid so they never wrap awkwardly on
+   narrow screens, and read clearly at a glance.
 ───────────────────────────────────────────── */
 const RevenueTrendCard = ({ data = [] }) => {
   const totalRevenue = data.reduce((a, d) => a + d.revenue, 0);
@@ -277,51 +383,58 @@ const RevenueTrendCard = ({ data = [] }) => {
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-6 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
-        <div>
-          <p className="text-sm font-bold text-gray-900">Revenue trend</p>
-          <p className="text-xs text-gray-400 font-medium">Paid orders over time</p>
-        </div>
+      <CardHeader
+        icon={TrendingUp}
+        iconClass="bg-orange-50 text-orange-600"
+        title="Revenue trend"
+        subtitle={data.length ? `Paid orders over the last ${data.length} days` : "Paid orders over time"}
+      />
 
-        <div className="flex items-center gap-5 sm:gap-7">
-          <div>
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Revenue</p>
-            <p className="text-base sm:text-lg font-black text-gray-900 tabular-nums">{formatINR(totalRevenue)}</p>
-          </div>
-          <div className="hidden xs:block">
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Avg. order</p>
-            <p className="text-base sm:text-lg font-black text-gray-900 tabular-nums">{formatINR(aov)}</p>
-          </div>
-          {growth !== null && (
-            <div>
-              <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Trend</p>
-              <p className={`flex items-center gap-1 text-base sm:text-lg font-black tabular-nums ${growth >= 0 ? "text-green-600" : "text-red-500"}`}>
-                {growth >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                {Math.abs(growth)}%
-              </p>
-            </div>
+      {/* KPI strip — fixed 3-column grid so it never wraps unevenly on mobile */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 bg-gray-50/70 rounded-xl px-3 py-3 sm:px-4 mb-5">
+        <div>
+          <p className="text-[10px] sm:text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Revenue</p>
+          <p className="text-sm sm:text-lg font-black text-gray-900 tabular-nums truncate">{formatINR(totalRevenue)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] sm:text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Avg. order</p>
+          <p className="text-sm sm:text-lg font-black text-gray-900 tabular-nums truncate">{formatINR(aov)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] sm:text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Trend</p>
+          {growth !== null ? (
+            <p className={`flex items-center gap-1 text-sm sm:text-lg font-black tabular-nums ${growth >= 0 ? "text-green-600" : "text-red-500"}`}>
+              {growth >= 0 ? <TrendingUp size={14} className="shrink-0" /> : <TrendingDown size={14} className="shrink-0" />}
+              {Math.abs(growth)}%
+            </p>
+          ) : (
+            <p className="text-sm sm:text-lg font-black text-gray-300">—</p>
           )}
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={data} margin={{ left: -20, right: 10, top: 5 }}>
-          <defs>
-            <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#F97316" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid vertical={false} stroke="#F1F5F9" />
-          <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} minTickGap={20} />
-          <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={40} />
-          <Tooltip
-            formatter={(v) => [formatINR(v), "Revenue"]}
-            contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }}
-          />
-          <Area type="monotone" dataKey="revenue" stroke="#F97316" strokeWidth={2.5} fill="url(#revFill)" />
-        </AreaChart>
-      </ResponsiveContainer>
+      {data.length === 0 ? (
+        <CardEmptyState icon={TrendingUp} label="No revenue recorded for this period yet" height={220} />
+      ) : (
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={data} margin={{ left: -20, right: 10, top: 5 }}>
+            <defs>
+              <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#F97316" stopOpacity={0.25} />
+                <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} stroke="#F1F5F9" />
+            <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} minTickGap={20} />
+            <YAxis tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} width={40} />
+            <Tooltip
+              formatter={(v) => [formatINR(v), "Revenue"]}
+              contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }}
+            />
+            <Area type="monotone" dataKey="revenue" stroke="#F97316" strokeWidth={2.5} fill="url(#revFill)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 };
@@ -331,31 +444,57 @@ const RevenueTrendCard = ({ data = [] }) => {
 ───────────────────────────────────────────── */
 const CategoryRevenueCard = ({ data = [] }) => (
   <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm">
-    <p className="text-sm font-bold text-gray-900 mb-1">Revenue by category</p>
-    <p className="text-xs text-gray-400 font-medium mb-4">Socks · bags · stationery</p>
-    <ResponsiveContainer width="100%" height={200}>
-      <BarChart data={data} layout="vertical" margin={{ left: 10, right: 20 }}>
-        <CartesianGrid horizontal={false} stroke="#F1F5F9" />
-        <XAxis type="number" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-        <YAxis
-          type="category"
-          dataKey="category"
-          tick={{ fontSize: 12, fill: "#475569", fontWeight: 600 }}
-          axisLine={false}
-          tickLine={false}
-          width={80}
-        />
-        <Tooltip
-          formatter={(v, key) => [key === "revenue" ? formatINR(v) : v, key === "revenue" ? "Revenue" : "Units"]}
-          contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }}
-        />
-        <Bar dataKey="revenue" radius={[0, 8, 8, 0]} barSize={22}>
+    <CardHeader
+      icon={Package}
+      iconClass="bg-indigo-50 text-indigo-600"
+      title="Revenue by category"
+      subtitle="Socks · bags · stationery"
+    />
+    {data.length === 0 ? (
+      <CardEmptyState icon={Package} label="No category revenue yet — sales will appear here once orders come in" />
+    ) : (
+      <>
+        <ResponsiveContainer width="100%" height={data.length * 46 + 20} minHeight={140}>
+          <BarChart data={data} layout="vertical" margin={{ left: 4, right: 16 }}>
+            <CartesianGrid horizontal={false} stroke="#F1F5F9" />
+            <XAxis type="number" tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} />
+            <YAxis
+              type="category"
+              dataKey="category"
+              tick={{ fontSize: 12, fill: "#334155", fontWeight: 600 }}
+              axisLine={false}
+              tickLine={false}
+              width={72}
+            />
+            <Tooltip
+              formatter={(v, key) => [key === "revenue" ? formatINR(v) : v, key === "revenue" ? "Revenue" : "Units"]}
+              contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }}
+            />
+            <Bar dataKey="revenue" radius={[0, 8, 8, 0]} barSize={22}>
+              {data.map((d) => (
+                <Cell key={d.category} fill={categoryColor(d.category)} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+
+        {/* Explicit value list below the chart — makes exact numbers legible
+            on small screens where bar-end labels would get clipped */}
+        <div className="mt-3 pt-3 border-t border-gray-50 space-y-1.5">
           {data.map((d) => (
-            <Cell key={d.category} fill={categoryColor(d.category)} />
+            <div key={d.category} className="flex items-center justify-between text-xs gap-2">
+              <span className="flex items-center gap-1.5 text-gray-600 font-medium capitalize truncate">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: categoryColor(d.category) }} />
+                {d.category}
+              </span>
+              <span className="text-gray-900 font-bold tabular-nums shrink-0 text-right">
+                {formatINR(d.revenue)} <span className="text-gray-400 font-medium">· {d.unitsSold} units</span>
+              </span>
+            </div>
           ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+        </div>
+      </>
+    )}
   </div>
 );
 
@@ -378,34 +517,45 @@ const SizeDemandCard = ({ data = [] }) => {
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div>
-          <p className="text-sm font-bold text-gray-900">Size-wise demand</p>
-          <p className="text-xs text-gray-400 font-medium">Units sold by size</p>
-        </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setActive(c)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold capitalize transition-colors ${
-                active === c ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-500 hover:bg-gray-100"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={bySize} margin={{ left: -20, right: 10 }}>
-          <CartesianGrid vertical={false} stroke="#F1F5F9" />
-          <XAxis dataKey="size" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={40} />
-          <Tooltip formatter={(v) => [v, "Units sold"]} contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }} />
-          <Bar dataKey="unitsSold" radius={[8, 8, 0, 0]} fill={active === "all" ? "#6366F1" : categoryColor(active)} barSize={32} />
-        </BarChart>
-      </ResponsiveContainer>
+      <CardHeader
+        icon={Ruler}
+        iconClass="bg-teal-50 text-teal-600"
+        title="Size-wise demand"
+        subtitle="Units sold by size"
+        right={
+          data.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {categories.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setActive(c)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold capitalize transition-colors ${
+                    active === c ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )
+        }
+      />
+
+      {data.length === 0 ? (
+        <CardEmptyState icon={Ruler} label="No size demand data yet — will populate once sizes start selling" />
+      ) : bySize.length === 0 ? (
+        <CardEmptyState icon={Ruler} label={`No sales in "${active}" yet`} />
+      ) : (
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={bySize} margin={{ left: -20, right: 10 }}>
+            <CartesianGrid vertical={false} stroke="#F1F5F9" />
+            <XAxis dataKey="size" tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} width={40} />
+            <Tooltip formatter={(v) => [v, "Units sold"]} contentStyle={{ borderRadius: 12, border: "1px solid #F1F5F9", fontSize: 12 }} />
+            <Bar dataKey="unitsSold" radius={[8, 8, 0, 0]} fill={active === "all" ? "#6366F1" : categoryColor(active)} barSize={32} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 };
@@ -422,30 +572,34 @@ const urgency = (days) => {
 
 const StockRiskCard = ({ data = [] }) => (
   <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm">
-    <div className="flex items-center gap-2 mb-1">
-      <AlertTriangle size={15} className="text-red-500" />
-      <p className="text-sm font-bold text-gray-900">Stock-out risk</p>
-    </div>
-    <p className="text-xs text-gray-400 font-medium mb-4">Low stock, ranked by how soon it runs out</p>
+    <CardHeader
+      icon={AlertTriangle}
+      iconClass="bg-red-50 text-red-600"
+      title="Stock-out risk"
+      subtitle="Low stock, ranked by how soon it runs out"
+    />
 
-    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-      {data.length === 0 && <p className="text-sm text-gray-400 py-6 text-center">Nothing at risk right now.</p>}
-      {data.map((item) => {
-        const u = urgency(item.daysUntilStockOut);
-        return (
-          <div
-            key={`${item.productId}_${item.size}`}
-            className={`flex items-center justify-between gap-3 border-l-4 ${u.border} bg-gray-50/60 rounded-r-xl pl-3 pr-3 py-2.5`}
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
-              <p className="text-xs text-gray-400 font-medium capitalize">{item.category} · size {item.size} · {item.currentStock} left</p>
+    {data.length === 0 ? (
+      <CardEmptyState icon={AlertTriangle} label="Nothing at risk right now — stock levels look healthy" height={160} />
+    ) : (
+      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+        {data.map((item) => {
+          const u = urgency(item.daysUntilStockOut);
+          return (
+            <div
+              key={`${item.productId}_${item.size}`}
+              className={`flex items-center justify-between gap-3 border-l-4 ${u.border} bg-gray-50/60 rounded-r-xl pl-3 pr-3 py-2.5`}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
+                <p className="text-xs text-gray-500 font-medium capitalize">{item.category} · size {item.size} · {item.currentStock} left</p>
+              </div>
+              <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${u.badge}`}>{u.label}</span>
             </div>
-            <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${u.badge}`}>{u.label}</span>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    )}
   </div>
 );
 
@@ -454,29 +608,34 @@ const StockRiskCard = ({ data = [] }) => (
 ───────────────────────────────────────────── */
 const TopCustomersCard = ({ data = [] }) => (
   <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm">
-    <div className="flex items-center gap-2 mb-1">
-      <Crown size={15} className="text-amber-500" />
-      <p className="text-sm font-bold text-gray-900">Top customers</p>
-    </div>
-    <p className="text-xs text-gray-400 font-medium mb-4">By order count</p>
+    <CardHeader
+      icon={Crown}
+      iconClass="bg-amber-50 text-amber-600"
+      title="Top customers"
+      subtitle="By order count"
+    />
 
-    <div className="divide-y divide-gray-50">
-      {data.slice(0, 6).map((c) => (
-        <div key={c.userId} className="flex items-center gap-3 py-2.5">
-          <div className="w-8 h-8 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center shrink-0">
-            {c.username?.[0]?.toUpperCase() || "?"}
+    {data.length === 0 ? (
+      <CardEmptyState icon={Crown} label="No repeat customers yet" height={160} />
+    ) : (
+      <div className="divide-y divide-gray-50">
+        {data.slice(0, 6).map((c) => (
+          <div key={c.userId} className="flex items-center gap-3 py-2.5">
+            <div className="w-8 h-8 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center shrink-0">
+              {c.username?.[0]?.toUpperCase() || "?"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-900 truncate">{c.username || "Guest"}</p>
+              <p className="text-xs text-gray-500 font-medium">{relativeDate(c.lastOrderDate)} · {formatINR(c.totalSpent)}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-sm font-black text-gray-900">{c.orderCount}</p>
+              <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">orders</p>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gray-900 truncate">{c.username || "Guest"}</p>
-            <p className="text-xs text-gray-400 font-medium">{relativeDate(c.lastOrderDate)} · {formatINR(c.totalSpent)}</p>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="text-sm font-black text-gray-900">{c.orderCount}</p>
-            <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">orders</p>
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    )}
   </div>
 );
 
@@ -494,11 +653,20 @@ const Analytics = ({ analytics = {} }) => {
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      <div>
+        <SectionLabel>At a glance</SectionLabel>
+        <AnalyticsSummaryStrip
+          revenueByCategory={revenueByCategory}
+          stockRisk={stockRisk}
+          topCustomers={topCustomers}
+        />
+      </div>
+
       <RevenueTrendCard data={revenueOverTime} />
 
       <div>
         <SectionLabel>Catalog performance</SectionLabel>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           <CategoryRevenueCard data={revenueByCategory} />
           <SizeDemandCard data={sizeDemand} />
         </div>
@@ -506,7 +674,7 @@ const Analytics = ({ analytics = {} }) => {
 
       <div>
         <SectionLabel>Fulfillment &amp; customers</SectionLabel>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           <StockRiskCard data={stockRisk} />
           <TopCustomersCard data={topCustomers} />
         </div>
