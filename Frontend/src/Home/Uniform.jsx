@@ -1,8 +1,169 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ShoppingBag, AlertCircle, ChevronRight, Tag, Layers, Shirt } from "lucide-react";
+import { ShoppingBag, AlertCircle, ChevronRight, Tag, Layers, Shirt, ArrowUpRight } from "lucide-react";
 import API from "../api/axios";
 
+/* A product counts as a "set" if the word "set" appears anywhere in its name
+   e.g. "Boys Uniform Set", "Sports Set of 3", "Combo Set" all match */
+const isSetProduct = (product) => /set/i.test(product.name || "");
+
+/* ───────────── Skeleton ───────────── */
+const SkeletonCard = ({ index }) => (
+  <div
+    className="uf-card uf-skeleton rounded-3xl overflow-hidden"
+    style={{ animationDelay: `${index * 90}ms` }}
+  >
+    <div className="h-44 sm:h-56 uf-shimmer" />
+    <div className="p-3.5 sm:p-4 space-y-3">
+      <div className="h-4 uf-shimmer rounded-full w-3/4" />
+      <div className="h-4 uf-shimmer rounded-full w-1/3" />
+      <div className="h-9 uf-shimmer rounded-2xl mt-4" />
+    </div>
+  </div>
+);
+
+/* ───────────── Product card ───────────── */
+const ProductCard = ({ product, index, navigate }) => {
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef(null);
+
+  const minPrice = product.sizes?.length
+    ? Math.min(...product.sizes.map((s) => s.price))
+    : null;
+
+  const isOutOfStock = product.sizes?.every((s) => s.stock === 0);
+  const isSet = isSetProduct(product);
+  const hasSecondImage = Boolean(product.images?.[1]);
+
+  // Handles images that finished loading before React attached onLoad (cache)
+  useEffect(() => {
+    if (imgRef.current?.complete) setLoaded(true);
+  }, []);
+
+  const open = () => {
+    if (!isOutOfStock) navigate(`/products/${product._id}`);
+  };
+
+  // Cursor-follow light on the glass surface (pointer devices only, via CSS)
+  const handleMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+    e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+  };
+
+  return (
+    <div
+      onClick={open}
+      onMouseMove={handleMove}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          open();
+        }
+      }}
+      role="link"
+      tabIndex={isOutOfStock ? -1 : 0}
+      aria-disabled={isOutOfStock}
+      aria-label={`${product.name}${isOutOfStock ? ", out of stock" : ""}`}
+      style={{ animationDelay: `${Math.min(index, 11) * 70}ms` }}
+      className={`uf-card uf-enter group rounded-3xl overflow-hidden flex flex-col
+        ${isOutOfStock ? "opacity-70 cursor-not-allowed" : "uf-card-live cursor-pointer"}`}
+    >
+      {/* Image */}
+      <div className="relative h-44 sm:h-56 overflow-hidden m-1.5 rounded-[1.25rem] bg-white/40">
+        {product.images?.[0] ? (
+          <>
+            {!loaded && <div className="absolute inset-0 uf-shimmer" />}
+            <img
+              ref={imgRef}
+              src={product.images[0]}
+              alt={product.name}
+              loading="lazy"
+              onLoad={() => setLoaded(true)}
+              className={`absolute inset-0 w-full h-full object-cover uf-img
+                ${loaded ? "opacity-100" : "opacity-0"}
+                ${hasSecondImage ? "group-hover:opacity-0" : ""}`}
+            />
+            {hasSecondImage && (
+              <img
+                src={product.images[1]}
+                alt=""
+                loading="lazy"
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover uf-img opacity-0 group-hover:opacity-100"
+              />
+            )}
+          </>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <ShoppingBag size={32} className="text-blue-200" />
+          </div>
+        )}
+
+        {/* soft bottom fade so badges stay legible on any photo */}
+        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-slate-900/25 to-transparent pointer-events-none" />
+
+        {isOutOfStock && (
+          <div className="absolute inset-0 bg-white/55 backdrop-blur-sm flex items-center justify-center">
+            <span className="bg-red-500/90 text-white text-xs font-bold px-3.5 py-1.5 rounded-full backdrop-blur-sm shadow-lg shadow-red-500/20">
+              Out of Stock
+            </span>
+          </div>
+        )}
+
+        {isSet && (
+          <div className="glass-pill-dark absolute top-2.5 left-2.5 text-white text-[11px] sm:text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
+            <Layers size={11} />
+            Set
+          </div>
+        )}
+
+        {!isOutOfStock && product.sizes?.length > 0 && (
+          <div className="glass-pill-light absolute bottom-2.5 left-2.5 text-gray-700 text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full">
+            {product.sizes.length} size{product.sizes.length > 1 ? "s" : ""}
+          </div>
+        )}
+
+        {!isOutOfStock && (
+          <span className="uf-arrow absolute top-2.5 right-2.5 w-8 h-8 rounded-full glass-pill-light flex items-center justify-center text-blue-700">
+            <ArrowUpRight size={15} />
+          </span>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="px-3.5 pb-3.5 pt-2 sm:px-4 sm:pb-4 flex flex-col gap-2.5 flex-1">
+        <h3 className="text-sm sm:text-[15px] font-bold text-gray-800 leading-snug line-clamp-2 min-h-[2.5rem]">
+          {product.name}
+        </h3>
+
+        <div className="flex items-baseline gap-1.5 text-blue-700 mt-auto">
+          <Tag size={12} className="self-center" />
+          <span className="text-base sm:text-lg font-black tracking-tight">
+            {minPrice !== null ? `₹${minPrice}` : "—"}
+          </span>
+          {product.sizes?.length > 1 && (
+            <span className="text-xs text-gray-400 font-medium">onwards</span>
+          )}
+        </div>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isOutOfStock) navigate(`/products/${product._id}`);
+          }}
+          disabled={isOutOfStock}
+          className="glass-view-btn w-full flex items-center justify-center gap-1.5 text-blue-700 text-xs sm:text-[13px] font-semibold py-2.5 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <ShoppingBag size={14} />
+          View Product
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ───────────── Section ───────────── */
 const Uniform = () => {
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
@@ -24,10 +185,6 @@ const Uniform = () => {
     fetchUniforms();
   }, []);
 
-  // A product counts as a "set" if the word "set" appears anywhere in its name
-  // e.g. "Boys Uniform Set", "Sports Set of 3", "Combo Set" all match
-  const isSetProduct = (product) => /set/i.test(product.name || "");
-
   const { setProducts: sets, individualProducts, filteredProducts } = useMemo(() => {
     const sets = products.filter(isSetProduct);
     const individualProducts = products.filter((p) => !isSetProduct(p));
@@ -39,183 +196,110 @@ const Uniform = () => {
     return { setProducts: sets, individualProducts, filteredProducts };
   }, [products, activeTab]);
 
-  const SkeletonCard = () => (
-    <div className="glass-card rounded-2xl overflow-hidden animate-pulse">
-      <div className="h-52 bg-white/40" />
-      <div className="p-4 space-y-2">
-        <div className="h-4 bg-white/50 rounded w-3/4" />
-        <div className="h-4 bg-white/35 rounded w-1/3" />
-        <div className="h-8 bg-white/35 rounded-xl mt-3" />
-      </div>
-    </div>
-  );
-
-  const ProductCard = ({ product }) => {
-    const minPrice = product.sizes?.length
-      ? Math.min(...product.sizes.map((s) => s.price))
-      : null;
-
-    const isOutOfStock = product.sizes?.every((s) => s.stock === 0);
-    const isSet = isSetProduct(product);
-
-    return (
-      <div
-        onClick={() => !isOutOfStock && navigate(`/products/${product._id}`)}
-        className={`glass-card glass-shine rounded-2xl overflow-hidden transition-all duration-200 group
-          ${isOutOfStock ? "opacity-60 cursor-not-allowed" : "hover:-translate-y-1 cursor-pointer"}`}
-      >
-        {/* Image */}
-        <div className="relative h-48 sm:h-52 overflow-hidden bg-white/40">
-          {product.images?.[0] ? (
-            <img
-              src={product.images[0]}
-              alt={product.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <ShoppingBag size={32} className="text-blue-200" />
-            </div>
-          )}
-
-          {isOutOfStock && (
-            <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center">
-              <span className="bg-red-500/90 text-white text-xs font-bold px-3 py-1 rounded-full backdrop-blur-sm">
-                Out of Stock
-              </span>
-            </div>
-          )}
-
-          {/* Set badge → glass pill */}
-          {isSet && (
-            <div className="glass-pill-dark absolute top-2 left-2 text-white text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1">
-              <Layers size={11} />
-              Set
-            </div>
-          )}
-
-          {!isOutOfStock && product.sizes?.length > 0 && (
-            <div className="glass-pill-light absolute bottom-2 left-2 text-gray-700 text-xs font-semibold px-2.5 py-1 rounded-lg">
-              {product.sizes.length} size{product.sizes.length > 1 ? "s" : ""}
-            </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="p-3 sm:p-4 space-y-2">
-          <h3 className="text-sm font-bold text-gray-800 leading-tight line-clamp-2">
-            {product.name}
-          </h3>
-
-          <div className="flex items-center gap-1 text-blue-700">
-            <Tag size={12} />
-            <span className="text-sm font-black">
-              {minPrice !== null ? `₹${minPrice}` : "—"}
-            </span>
-            {product.sizes?.length > 1 && (
-              <span className="text-xs text-gray-400 font-normal">onwards</span>
-            )}
-          </div>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isOutOfStock) navigate(`/products/${product._id}`);
-            }}
-            disabled={isOutOfStock}
-            className="glass-view-btn w-full flex items-center justify-center gap-1.5 text-blue-700 text-xs font-semibold py-2 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <ShoppingBag size={13} />
-            View Product
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   const tabs = [
     { key: "all", label: "All", icon: ShoppingBag, count: products.length },
     { key: "sets", label: "Sets", icon: Layers, count: sets.length },
     { key: "individual", label: "Individual", icon: Shirt, count: individualProducts.length },
   ];
+  const activeIndex = Math.max(0, tabs.findIndex((t) => t.key === activeTab));
 
   return (
     <section
       id="uniform"
-      className="relative max-w-7xl mx-auto px-4 sm:px-6 py-14 overflow-hidden"
+      className="uf-root relative max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 overflow-hidden"
       style={{ "--brand": "37,99,235" /* blue-600 */, "--brand-2": "245,158,11" /* amber-500 */ }}
     >
-      {/* Ambient glass blobs — quiet, brand colors unchanged */}
+      {/* Ambient glass blobs */}
       <div className="glass-blob glass-blob--1 absolute -top-16 -right-16 w-80 h-80 rounded-full pointer-events-none" />
       <div className="glass-blob glass-blob--2 absolute bottom-0 -left-16 w-72 h-72 rounded-full pointer-events-none" />
+      <div className="glass-blob glass-blob--3 absolute top-1/2 left-1/2 w-64 h-64 rounded-full pointer-events-none" />
 
       {/* Section Header */}
-      <div className="relative flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-        <div className="space-y-1">
-          <div className="glass-pill inline-flex items-center gap-2 text-blue-700 text-xs font-semibold px-3.5 py-1.5 rounded-full mb-1">
+      <div className="uf-enter relative flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-7">
+        <div className="space-y-1.5">
+          <div className="glass-pill inline-flex items-center gap-2 text-blue-700 text-xs font-semibold px-3.5 py-1.5 rounded-full">
             <span className="glass-dot w-1.5 h-1.5 rounded-full" />
             Collection
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-gray-900">
+          <h2 className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
             School Uniforms
           </h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm sm:text-base text-gray-500">
             Official uniforms for all classes and seasons
           </p>
         </div>
 
         <button
           onClick={() => navigate("/products?category=uniform")}
-          className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors shrink-0"
+          className="uf-link hidden sm:flex glass-pill items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 px-4 py-2 rounded-full shrink-0"
         >
           View All
-          <ChevronRight size={16} />
+          <ChevronRight size={16} className="uf-chevron" />
         </button>
       </div>
 
-      {/* Tabs → glass pill tabs */}
+      {/* Tabs → segmented glass control with sliding indicator */}
       {!loading && products.length > 0 && (
-        <div className="relative flex gap-2 mb-8 overflow-x-auto pb-1">
-          {tabs.map(({ key, label, icon: Icon, count }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-200 shrink-0
-                ${activeTab === key ? "glass-tab-active text-white" : "glass-tab text-gray-600"
-                }`}
-            >
-              <Icon size={14} />
-              {label}
-              <span
-                className={`text-xs px-1.5 py-0.5 rounded-md ${
-                  activeTab === key ? "bg-white/25" : "bg-white/70 text-gray-500"
-                }`}
+        <div
+          className="uf-enter relative mb-8 glass-track rounded-2xl p-1.5 grid grid-cols-3 w-full sm:w-fit sm:min-w-[26rem]"
+          role="tablist"
+          style={{ animationDelay: "80ms" }}
+        >
+          <span
+            aria-hidden="true"
+            className="glass-tab-active uf-indicator absolute top-1.5 bottom-1.5 left-1.5 rounded-xl"
+            style={{
+              width: "calc((100% - 0.75rem) / 3)",
+              transform: `translateX(${activeIndex * 100}%)`,
+            }}
+          />
+          {tabs.map(({ key, label, icon: Icon, count }) => {
+            const active = activeTab === key;
+            return (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(key)}
+                className={`relative z-10 flex items-center justify-center gap-1.5 px-2 sm:px-4 py-2.5 rounded-xl text-[13px] sm:text-sm font-semibold whitespace-nowrap transition-colors duration-300
+                  ${active ? "text-white" : "text-gray-600 hover:text-blue-700"}`}
               >
-                {count}
-              </span>
-            </button>
-          ))}
+                <Icon size={14} className="hidden min-[400px]:block" />
+                {label}
+                <span
+                  className={`text-[11px] sm:text-xs px-1.5 py-0.5 rounded-md transition-colors duration-300 ${
+                    active ? "bg-white/25" : "bg-white/70 text-gray-500"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 
       {/* Error → glass */}
       {error && (
-        <div className="relative glass-card flex items-center gap-2 text-red-600 px-4 py-3 rounded-xl text-sm mb-6 border-red-200/70">
+        <div className="uf-enter relative glass-card flex items-center gap-2 text-red-600 px-4 py-3 rounded-2xl text-sm mb-6 border-red-200/70">
           <AlertCircle size={16} />
           {error}
         </div>
       )}
 
-      {/* Grid */}
-      <div className="relative grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+      {/* Grid — keyed by tab so cards re-enter with a stagger on every switch */}
+      <div
+        key={activeTab}
+        className="relative grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6"
+      >
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+          Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} index={i} />)
         ) : filteredProducts.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center justify-center py-16 gap-3">
-            <span className="glass-icon-chip flex items-center justify-center w-16 h-16 rounded-full">
+          <div className="uf-enter col-span-full flex flex-col items-center justify-center py-16 gap-3">
+            <span className="glass-icon-chip uf-float flex items-center justify-center w-16 h-16 rounded-full">
               <ShoppingBag size={28} className="text-blue-400" />
             </span>
-            <p className="text-gray-400 text-sm font-medium">
+            <p className="text-gray-500 text-sm font-medium text-center">
               {activeTab === "sets"
                 ? "No uniform sets available right now"
                 : activeTab === "individual"
@@ -224,137 +308,202 @@ const Uniform = () => {
             </p>
           </div>
         ) : (
-          filteredProducts.map((product) => <ProductCard key={product._id} product={product} />)
+          filteredProducts.map((product, i) => (
+            <ProductCard key={product._id} product={product} index={i} navigate={navigate} />
+          ))
         )}
       </div>
 
       {/* Mobile view all */}
       {!loading && products.length > 0 && (
-        <div className="relative sm:hidden mt-6 text-center">
+        <div className="uf-enter relative sm:hidden mt-8 text-center">
           <button
             onClick={() => navigate("/products?category=uniform")}
-            className="flex items-center gap-1.5 mx-auto text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+            className="uf-link glass-pill flex items-center gap-1.5 mx-auto text-sm font-semibold text-blue-600 hover:text-blue-700 px-5 py-2.5 rounded-full"
           >
             View All Uniforms
-            <ChevronRight size={16} />
+            <ChevronRight size={16} className="uf-chevron" />
           </button>
         </div>
       )}
 
       <style>{`
-        /* ── Liquid glass core surface ── */
-        .glass-card {
-          background: rgba(255,255,255,0.55);
-          border: 1px solid rgba(255,255,255,0.75);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          box-shadow: 0 10px 26px -14px rgba(var(--brand),0.28),
-                      inset 0 1px 0 rgba(255,255,255,0.85);
+        .uf-root { --ease: cubic-bezier(.22,1,.36,1); }
+
+        /* ── Liquid glass surfaces ── */
+        .glass-card, .uf-card {
+          background: linear-gradient(160deg, rgba(255,255,255,0.72), rgba(255,255,255,0.42));
+          border: 1px solid rgba(255,255,255,0.8);
+          backdrop-filter: blur(18px) saturate(160%);
+          -webkit-backdrop-filter: blur(18px) saturate(160%);
+          box-shadow: 0 12px 30px -16px rgba(var(--brand),0.3),
+                      inset 0 1px 0 rgba(255,255,255,0.95),
+                      inset 0 -1px 0 rgba(var(--brand),0.06);
         }
-        .glass-card.hover\\:-translate-y-1:hover {
-          box-shadow: 0 18px 34px -16px rgba(var(--brand),0.38),
-                      inset 0 1px 0 rgba(255,255,255,0.9);
+
+        .uf-card {
+          position: relative;
+          isolation: isolate;
+          transition: transform .5s var(--ease), box-shadow .5s var(--ease), opacity .3s;
+          -webkit-tap-highlight-color: transparent;
         }
+        .uf-card:focus-visible {
+          outline: 2px solid rgba(var(--brand),0.9);
+          outline-offset: 3px;
+        }
+        /* cursor-follow specular light */
+        .uf-card::before {
+          content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+          border-radius: inherit; opacity: 0; transition: opacity .4s;
+          background: radial-gradient(240px circle at var(--mx,50%) var(--my,0%),
+                      rgba(255,255,255,0.65), transparent 65%);
+        }
+        /* diagonal shine sweep */
+        .uf-card::after {
+          content: ""; position: absolute; top: 0; left: -70%; z-index: 2;
+          width: 40%; height: 100%; pointer-events: none;
+          background: linear-gradient(115deg, transparent, rgba(255,255,255,0.5), transparent);
+          transform: skewX(-18deg);
+          transition: left .9s var(--ease);
+        }
+        .uf-card-live:hover { transform: translateY(-6px); box-shadow: 0 26px 44px -20px rgba(var(--brand),0.45), inset 0 1px 0 rgba(255,255,255,1); }
+        .uf-card-live:active { transform: translateY(-2px) scale(.985); }
+        .uf-card-live:hover::before { opacity: 1; }
+        .uf-card-live:hover::after { left: 130%; }
+
+        .uf-img { transition: transform .8s var(--ease), opacity .6s ease; will-change: transform; }
+        .uf-card-live:hover .uf-img { transform: scale(1.08); }
+
+        .uf-arrow { opacity: 0; transform: translate(-6px, 6px) scale(.8); transition: all .45s var(--ease); }
+        .uf-card-live:hover .uf-arrow, .uf-card-live:focus-visible .uf-arrow { opacity: 1; transform: none; }
+        @media (hover: none) { .uf-arrow { display: none; } }
 
         .glass-pill {
-          background: rgba(255,255,255,0.55);
-          border: 1px solid rgba(255,255,255,0.8);
+          background: rgba(255,255,255,0.6);
+          border: 1px solid rgba(255,255,255,0.85);
           backdrop-filter: blur(14px);
           -webkit-backdrop-filter: blur(14px);
-          box-shadow: 0 8px 18px -10px rgba(var(--brand),0.3),
-                      inset 0 1px 0 rgba(255,255,255,0.9);
+          box-shadow: 0 8px 18px -10px rgba(var(--brand),0.3), inset 0 1px 0 rgba(255,255,255,0.95);
         }
-        .glass-dot { background: rgb(var(--brand)); }
+        .glass-dot { background: rgb(var(--brand)); position: relative; }
+        .glass-dot::after {
+          content: ""; position: absolute; inset: 0; border-radius: 9999px;
+          background: rgb(var(--brand)); animation: ufPing 2s ease-out infinite;
+        }
+        @keyframes ufPing { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(3.2); opacity: 0; } }
 
         .glass-icon-chip {
-          background: linear-gradient(150deg, rgba(var(--brand),0.18), rgba(var(--brand),0.06));
-          border: 1px solid rgba(255,255,255,0.75);
+          background: linear-gradient(150deg, rgba(var(--brand),0.2), rgba(var(--brand),0.06));
+          border: 1px solid rgba(255,255,255,0.8);
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 6px 14px -8px rgba(var(--brand),0.3);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 8px 18px -8px rgba(var(--brand),0.35);
         }
+        .uf-float { animation: ufFloat 4s ease-in-out infinite; }
+        @keyframes ufFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 
-        /* Badges on product image — dark glass for the "Set" tag, light glass for size count */
+        /* Badges on product image */
         .glass-pill-dark {
-          background: rgba(29,78,216,0.75);
+          background: rgba(29,78,216,0.78);
           border: 1px solid rgba(255,255,255,0.3);
-          backdrop-filter: blur(8px);
-          -webkit-backdrop-filter: blur(8px);
-          box-shadow: 0 6px 14px -8px rgba(15,23,42,0.4);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          box-shadow: 0 6px 14px -8px rgba(15,23,42,0.45), inset 0 1px 0 rgba(255,255,255,0.3);
         }
         .glass-pill-light {
-          background: rgba(255,255,255,0.75);
-          border: 1px solid rgba(255,255,255,0.85);
-          backdrop-filter: blur(8px);
-          -webkit-backdrop-filter: blur(8px);
-          box-shadow: 0 6px 14px -8px rgba(15,23,42,0.2);
+          background: rgba(255,255,255,0.78);
+          border: 1px solid rgba(255,255,255,0.9);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          box-shadow: 0 6px 14px -8px rgba(15,23,42,0.25);
         }
 
         /* Tabs */
-        .glass-tab {
-          background: rgba(255,255,255,0.5);
-          border: 1px solid rgba(255,255,255,0.7);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-        }
-        .glass-tab:hover {
-          background: rgba(255,255,255,0.75);
+        .glass-track {
+          background: rgba(255,255,255,0.45);
+          border: 1px solid rgba(255,255,255,0.8);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -6px 14px -10px rgba(var(--brand),0.2),
+                      0 10px 24px -16px rgba(var(--brand),0.3);
         }
         .glass-tab-active {
-          background: linear-gradient(135deg, rgba(37,99,235,0.92), rgba(29,78,216,0.95));
+          background: linear-gradient(135deg, rgba(37,99,235,0.95), rgba(29,78,216,0.98));
           border: 1px solid rgba(255,255,255,0.35);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-          box-shadow: 0 10px 20px -10px rgba(var(--brand),0.5),
-                      inset 0 1px 0 rgba(255,255,255,0.35);
+          box-shadow: 0 10px 20px -10px rgba(var(--brand),0.6), inset 0 1px 0 rgba(255,255,255,0.4);
         }
+        .uf-indicator { transition: transform .55s cubic-bezier(.34,1.3,.5,1); }
 
         /* View product button */
         .glass-view-btn {
-          background: rgba(37,99,235,0.1);
-          border: 1px solid rgba(37,99,235,0.18);
+          background: rgba(37,99,235,0.08);
+          border: 1px solid rgba(37,99,235,0.16);
+          transition: background .35s var(--ease), color .35s var(--ease), border-color .35s var(--ease),
+                      transform .35s var(--ease), box-shadow .35s var(--ease);
         }
         .glass-view-btn:hover:not(:disabled) {
-          background: rgba(37,99,235,0.95);
-          color: #fff;
-          border-color: rgba(37,99,235,0.95);
+          background: rgba(37,99,235,0.95); color: #fff; border-color: rgba(37,99,235,0.95);
+          box-shadow: 0 10px 20px -10px rgba(var(--brand),0.6);
         }
+        .glass-view-btn:active:not(:disabled) { transform: scale(.97); }
+        .glass-view-btn:focus-visible { outline: 2px solid rgba(var(--brand),0.9); outline-offset: 2px; }
 
-        /* ── Shine sweep ── */
-        .glass-shine { position: relative; overflow: hidden; isolation: isolate; }
-        .glass-shine::after {
-          content: ""; position: absolute; top: 0; left: -60%;
-          width: 40%; height: 100%;
-          background: linear-gradient(115deg, transparent, rgba(255,255,255,0.55), transparent);
-          transform: skewX(-18deg);
-          transition: left 0.75s ease;
-          pointer-events: none;
+        /* "View all" links */
+        .uf-link { transition: transform .35s var(--ease), box-shadow .35s var(--ease); }
+        .uf-link:hover { transform: translateY(-2px); }
+        .uf-chevron { transition: transform .35s var(--ease); }
+        .uf-link:hover .uf-chevron { transform: translateX(3px); }
+
+        /* ── Entrance + loading ── */
+        .uf-enter { animation: ufRise .8s var(--ease) backwards; }
+        @keyframes ufRise {
+          from { opacity: 0; transform: translateY(22px) scale(.96); filter: blur(6px); }
+          to   { opacity: 1; transform: none; filter: blur(0); }
         }
-        .glass-shine:hover::after { left: 130%; }
+        .uf-skeleton { animation: ufRise .6s var(--ease) backwards; }
+        .uf-reveal:not(.in-view) { opacity: 0; }
+        .uf-reveal.in-view { animation: ufRise .8s var(--ease) backwards; }
+        .uf-shimmer {
+          background: linear-gradient(100deg, rgba(255,255,255,0.35) 30%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0.35) 70%);
+          background-size: 200% 100%;
+          animation: ufShimmer 1.4s linear infinite;
+        }
+        @keyframes ufShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
         /* ── Ambient background blobs ── */
-        .glass-blob { filter: blur(60px); opacity: 0.35; }
+        .glass-blob { filter: blur(64px); opacity: 0.4; }
         .glass-blob--1 {
-          background: radial-gradient(circle at 30% 30%, rgba(var(--brand),0.3), rgba(var(--brand),0));
+          background: radial-gradient(circle at 30% 30%, rgba(var(--brand),0.32), rgba(var(--brand),0));
           animation: drift1 16s ease-in-out infinite;
         }
         .glass-blob--2 {
-          background: radial-gradient(circle at 60% 40%, rgba(var(--brand-2),0.22), rgba(var(--brand-2),0));
+          background: radial-gradient(circle at 60% 40%, rgba(var(--brand-2),0.24), rgba(var(--brand-2),0));
           animation: drift2 14s ease-in-out infinite;
+        }
+        .glass-blob--3 {
+          background: radial-gradient(circle, rgba(99,102,241,0.18), rgba(99,102,241,0));
+          animation: drift1 20s ease-in-out infinite reverse;
         }
         @keyframes drift1 {
           0%, 100% { transform: translate(0,0) scale(1); }
-          50% { transform: translate(-18px, 20px) scale(1.06); }
+          50% { transform: translate(-22px, 24px) scale(1.08); }
         }
         @keyframes drift2 {
           0%, 100% { transform: translate(0,0) scale(1); }
-          50% { transform: translate(16px, -16px) scale(1.05); }
+          50% { transform: translate(20px, -20px) scale(1.06); }
+        }
+
+        @media (hover: none) {
+          .uf-card-live:hover { transform: none; }
+          .uf-card-live:hover .uf-img { transform: none; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .glass-blob--1, .glass-blob--2 {
-            animation: none !important;
-          }
+          .glass-blob--1, .glass-blob--2, .glass-blob--3,
+          .glass-dot::after, .uf-float, .uf-shimmer { animation: none !important; }
+          .uf-enter, .uf-skeleton, .uf-reveal.in-view { animation: none !important; }
+          .uf-reveal:not(.in-view) { opacity: 1 !important; }
+          .uf-card, .uf-img, .uf-indicator, .uf-card::after { transition: none !important; }
         }
       `}</style>
     </section>
