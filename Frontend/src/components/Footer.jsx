@@ -180,7 +180,7 @@ const Footer = () => {
             <div className="flex items-center gap-4">
               <p>
                 Developed by{" "}
-                <a href="https://github.com/saurav10023" target="_blank" rel="noreferrer" className="fb-focus text-gray-300 hover:text-blue-400 font-medium transition-colors rounded">
+                <a href= "https://portfolio-five-orpin-qp04v1u332.vercel.app/" target="_blank" rel="noreferrer" className="fb-focus text-gray-300 hover:text-blue-400 font-medium transition-colors rounded">
                   Kumar Saurav
                 </a>
               </p>
